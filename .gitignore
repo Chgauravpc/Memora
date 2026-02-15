@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environment
+env/
+venv/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Redis Data
+redis_data/
+dump.rdb
+appendonly.aof
+*.rdb
+*.aof
+
+# Qdrant Vector Database
+qdrant_storage/
+
+# User Memory Data (exclude all user-specific memories)
+memory/*/
+
+# Logs
+*.log
+logs/
+
+# Test outputs and temporary files
+test_output.txt
+*.tmp
+*.bak
+output/
+!output/comprehensive_1000_turn_stats.json
+
+# Old test results (archived)
+test_reduced_decay*.json
+1000_turn_stats.json
+
+# Test files (except the main customer conversation test)
+test_*.py
+
+# OS
+.DS_Store
+Thumbs.db
+.cache/
+
+# Docker
+.docker/
+
+# Keep sample files
+!test_customer_conversation.py
+
+# Keep memory directory structure with example
+!memory/
+!memory/jennifer_martinez/
+!memory/jennifer_martinez/*.md

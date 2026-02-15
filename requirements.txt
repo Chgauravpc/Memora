@@ -1,0 +1,13 @@
+redis==5.0.1
+python-dateutil==2.8.2
+
+# Phase 2: Vector Store & Embeddings
+qdrant-client==1.7.0
+sentence-transformers>=3.0.0
+numpy>=1.21.0
+
+# Phase 3: LLM Extraction (Optional - install based on provider)
+# Install only what you need:
+openai>=1.0.0          # For OpenAI GPT models
+anthropic>=0.18.0      # For Anthropic Claude models
+groq>=0.4.0            # For Groq (fastest, recommended)

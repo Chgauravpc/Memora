@@ -1,0 +1,5103 @@
+{
+  "conversation_id": "comprehensive_1000_turn_test",
+  "persona": {
+    "name": "Alex Rivera",
+    "company": "DataFlow Inc",
+    "role": "Senior ML Engineer",
+    "location": "San Francisco",
+    "languages": [
+      "Python",
+      "JavaScript",
+      "Go"
+    ],
+    "preferences": {
+      "database": "PostgreSQL",
+      "cloud": "AWS",
+      "editor": "VS Code",
+      "os": "Ubuntu"
+    },
+    "projects": [
+      "recommendation-engine",
+      "fraud-detection-ml",
+      "real-time-analytics"
+    ],
+    "interests": [
+      "machine learning",
+      "distributed systems",
+      "data pipelines"
+    ]
+  },
+  "description": "Comprehensive test with 50% extraction rate testing all 4 phases",
+  "num_turns": 1000,
+  "expected_extraction_rate": 0.5,
+  "phases_tested": [
+    "Phase 1: Extraction",
+    "Phase 2: Semantic Search",
+    "Phase 3: Deduplication",
+    "Phase 4: Consolidation"
+  ],
+  "turns": [
+    {
+      "turn": 1,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 2,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 3,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 4,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 5,
+      "message": "Always use Go for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 6,
+      "message": "Tell me about my current projects.",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 7,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 8,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 9,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 10,
+      "message": "Hey, how's it going?",
+      "has_memory": false,
+      "is_test_marker": true
+    },
+    {
+      "turn": 11,
+      "message": "I enjoy coding in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 12,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 13,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 14,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 15,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 16,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 17,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 18,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 19,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 20,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 21,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 22,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 23,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 24,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 25,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 26,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 27,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 28,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 29,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 30,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 31,
+      "message": "I usually write code in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 32,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 33,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 34,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 35,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 36,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 37,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 38,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 39,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 40,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 41,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 42,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 43,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 44,
+      "message": "I promise to deploy real-time-analytics this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 45,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 46,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 47,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 48,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 49,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 50,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 51,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 52,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 53,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 54,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 55,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 56,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 57,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 58,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 59,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 60,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 61,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 62,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 63,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 64,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 65,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 66,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 67,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 68,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 69,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 70,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 71,
+      "message": "I dislike using Ruby for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 72,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 73,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 74,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 75,
+      "message": "For any project involving real-time data streaming or complex state management, Go becomes essential due to its memory safety guarantees.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 76,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 77,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 78,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 79,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 80,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 81,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 82,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 83,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 84,
+      "message": "I promise to deploy real-time-analytics this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 85,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 86,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 87,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 88,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 89,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 90,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 91,
+      "message": "I prefer using JavaScript for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 92,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 93,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 94,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 95,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 96,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 97,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 98,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 99,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 100,
+      "message": "My favorite language for backend work is Go.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 101,
+      "message": "My favorite programming language is Go.",
+      "has_memory": true
+    },
+    {
+      "turn": 102,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 103,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 104,
+      "message": "I promise to deploy real-time-analytics this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 105,
+      "message": "The fraud-detection-ml system handles customer payment processing, so reliability and data consistency are absolutely critical - that's why we chose PostgreSQL.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 106,
+      "message": "Can you recall my company and role?",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 107,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 108,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 109,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 110,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 111,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 112,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 113,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 114,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 115,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 116,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 117,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 118,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 119,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 120,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 121,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 122,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 123,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 124,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 125,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 126,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 127,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 128,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 129,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 130,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 131,
+      "message": "I dislike using Ruby for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 132,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 133,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 134,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 135,
+      "message": "When building microservices, Go is significantly more efficient than PHP because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 136,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 137,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 138,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 139,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 140,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 141,
+      "message": "I hate debugging Ruby applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 142,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 143,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 144,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 145,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 146,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 147,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 148,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 149,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 150,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 151,
+      "message": "I prefer using Python for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 152,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 153,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 154,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 155,
+      "message": "Always use JavaScript for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 156,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 157,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 158,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 159,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 160,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 161,
+      "message": "I prefer using Python for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 162,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 163,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 164,
+      "message": "I promise to deploy real-time-analytics this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 165,
+      "message": "When building microservices, Go is significantly more efficient than PHP because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 166,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 167,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 168,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 169,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 170,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 171,
+      "message": "I enjoy coding in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 172,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 173,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 174,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 175,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 176,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 177,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 178,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 179,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 180,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 181,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 182,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 183,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 184,
+      "message": "I'll finish the fraud-detection-ml project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 185,
+      "message": "Always use Python for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 186,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 187,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 188,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 189,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 190,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 191,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 192,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 193,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 194,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 195,
+      "message": "For any project involving real-time data streaming or complex state management, Go becomes essential due to its memory safety guarantees.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 196,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 197,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 198,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 199,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 200,
+      "message": "I love working with Go for backend systems.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 201,
+      "message": "My favorite programming language is Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 202,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 203,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 204,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 205,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 206,
+      "message": "What do you know about my interests?",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 207,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 208,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 209,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 210,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 211,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 212,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 213,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 214,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 215,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 216,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 217,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 218,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 219,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 220,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 221,
+      "message": "My favorite programming language is JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 222,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 223,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 224,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 225,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 226,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 227,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 228,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 229,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 230,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 231,
+      "message": "I enjoy coding in Go.",
+      "has_memory": true
+    },
+    {
+      "turn": 232,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 233,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 234,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 235,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 236,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 237,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 238,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 239,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 240,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 241,
+      "message": "I enjoy coding in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 242,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 243,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 244,
+      "message": "I promise to deploy recommendation-engine this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 245,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 246,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 247,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 248,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 249,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 250,
+      "message": "My favorite language for backend work is Go.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 251,
+      "message": "I dislike using Scala for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 252,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 253,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 254,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 255,
+      "message": "When building microservices, Go is significantly more efficient than Scala because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 256,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 257,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 258,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 259,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 260,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 261,
+      "message": "I dislike using PHP for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 262,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 263,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 264,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 265,
+      "message": "Always use Go for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 266,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 267,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 268,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 269,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 270,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 271,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 272,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 273,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 274,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 275,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 276,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 277,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 278,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 279,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 280,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 281,
+      "message": "I dislike using Ruby for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 282,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 283,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 284,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 285,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 286,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 287,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 288,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 289,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 290,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 291,
+      "message": "I usually write code in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 292,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 293,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 294,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 295,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 296,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 297,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 298,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 299,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 300,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 301,
+      "message": "I enjoy coding in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 302,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 303,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 304,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 305,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 306,
+      "message": "Remind me what I've told you about my background.",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 307,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 308,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 309,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 310,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 311,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 312,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 313,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 314,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 315,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 316,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 317,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 318,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 319,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 320,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 321,
+      "message": "I hate debugging Ruby applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 322,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 323,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 324,
+      "message": "I promise to deploy fraud-detection-ml this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 325,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 326,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 327,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 328,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 329,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 330,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 331,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 332,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 333,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 334,
+      "message": "I promise to deploy real-time-analytics this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 335,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 336,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 337,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 338,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 339,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 340,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 341,
+      "message": "I dislike using PHP for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 342,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 343,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 344,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 345,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 346,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 347,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 348,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 349,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 350,
+      "message": "I love working with Go for backend systems.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 351,
+      "message": "I dislike using Ruby for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 352,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 353,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 354,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 355,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 356,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 357,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 358,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 359,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 360,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 361,
+      "message": "I prefer using JavaScript for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 362,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 363,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 364,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 365,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 366,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 367,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 368,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 369,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 370,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 371,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 372,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 373,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 374,
+      "message": "I promise to deploy recommendation-engine this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 375,
+      "message": "When building microservices, Go is significantly more efficient than PHP because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 376,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 377,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 378,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 379,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 380,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 381,
+      "message": "My favorite programming language is Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 382,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 383,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 384,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 385,
+      "message": "Always use Python for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 386,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 387,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 388,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 389,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 390,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 391,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 392,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 393,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 394,
+      "message": "I promise to deploy recommendation-engine this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 395,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 396,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 397,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 398,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 399,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 400,
+      "message": "My favorite language for backend work is Go.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 401,
+      "message": "I dislike using Scala for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 402,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 403,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 404,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 405,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 406,
+      "message": "What programming languages do I use?",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 407,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 408,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 409,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 410,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 411,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 412,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 413,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 414,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 415,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 416,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 417,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 418,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 419,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 420,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 421,
+      "message": "I dislike using Scala for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 422,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 423,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 424,
+      "message": "I promise to deploy recommendation-engine this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 425,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 426,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 427,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 428,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 429,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 430,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 431,
+      "message": "I enjoy coding in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 432,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 433,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 434,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 435,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 436,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 437,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 438,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 439,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 440,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 441,
+      "message": "I usually write code in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 442,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 443,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 444,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 445,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 446,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 447,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 448,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 449,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 450,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 451,
+      "message": "My favorite programming language is JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 452,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 453,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 454,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 455,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 456,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 457,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 458,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 459,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 460,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 461,
+      "message": "My favorite programming language is Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 462,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 463,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 464,
+      "message": "I promise to deploy fraud-detection-ml this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 465,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 466,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 467,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 468,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 469,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 470,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 471,
+      "message": "I prefer using JavaScript for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 472,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 473,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 474,
+      "message": "I'll finish the fraud-detection-ml project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 475,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 476,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 477,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 478,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 479,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 480,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 481,
+      "message": "I dislike using PHP for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 482,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 483,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 484,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 485,
+      "message": "Always use JavaScript for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 486,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 487,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 488,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 489,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 490,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 491,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 492,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 493,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 494,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 495,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 496,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 497,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 498,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 499,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 500,
+      "message": "I love working with Go for backend systems.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 501,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 502,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 503,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 504,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 505,
+      "message": "Always use Go for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 506,
+      "message": "Remind me what I've told you about my background.",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 507,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 508,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 509,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 510,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 511,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 512,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 513,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 514,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 515,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 516,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 517,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 518,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 519,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 520,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 521,
+      "message": "I hate debugging Ruby applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 522,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 523,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 524,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 525,
+      "message": "When building microservices, Go is significantly more efficient than Scala because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 526,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 527,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 528,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 529,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 530,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 531,
+      "message": "I hate debugging PHP applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 532,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 533,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 534,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 535,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 536,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 537,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 538,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 539,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 540,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 541,
+      "message": "I dislike using Ruby for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 542,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 543,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 544,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 545,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 546,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 547,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 548,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 549,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 550,
+      "message": "My favorite language for backend work is Go.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 551,
+      "message": "I hate debugging PHP applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 552,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 553,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 554,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 555,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 556,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 557,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 558,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 559,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 560,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 561,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 562,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 563,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 564,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 565,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 566,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 567,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 568,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 569,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 570,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 571,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 572,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 573,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 574,
+      "message": "I promise to deploy fraud-detection-ml this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 575,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 576,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 577,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 578,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 579,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 580,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 581,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 582,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 583,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 584,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 585,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 586,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 587,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 588,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 589,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 590,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 591,
+      "message": "I usually write code in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 592,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 593,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 594,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 595,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 596,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 597,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 598,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 599,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 600,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 601,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 602,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 603,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 604,
+      "message": "I promise to deploy fraud-detection-ml this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 605,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 606,
+      "message": "Tell me about my current projects.",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 607,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 608,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 609,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 610,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 611,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 612,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 613,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 614,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 615,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 616,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 617,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 618,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 619,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 620,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 621,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 622,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 623,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 624,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 625,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 626,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 627,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 628,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 629,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 630,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 631,
+      "message": "My favorite programming language is JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 632,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 633,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 634,
+      "message": "I promise to deploy fraud-detection-ml this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 635,
+      "message": "Always use JavaScript for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 636,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 637,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 638,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 639,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 640,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 641,
+      "message": "I prefer using JavaScript for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 642,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 643,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 644,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 645,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 646,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 647,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 648,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 649,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 650,
+      "message": "I love working with Go for backend systems.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 651,
+      "message": "I enjoy coding in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 652,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 653,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 654,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 655,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 656,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 657,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 658,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 659,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 660,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 661,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 662,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 663,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 664,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 665,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 666,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 667,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 668,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 669,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 670,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 671,
+      "message": "I dislike using Ruby for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 672,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 673,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 674,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 675,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 676,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 677,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 678,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 679,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 680,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 681,
+      "message": "I dislike using PHP for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 682,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 683,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 684,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 685,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 686,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 687,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 688,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 689,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 690,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 691,
+      "message": "I hate debugging PHP applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 692,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 693,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 694,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 695,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 696,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 697,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 698,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 699,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 700,
+      "message": "My favorite language for backend work is Go.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 701,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 702,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 703,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 704,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 705,
+      "message": "For any project involving real-time data streaming or complex state management, Go becomes essential due to its memory safety guarantees.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 706,
+      "message": "What are my technology preferences?",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 707,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 708,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 709,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 710,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 711,
+      "message": "I prefer using JavaScript for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 712,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 713,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 714,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 715,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 716,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 717,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 718,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 719,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 720,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 721,
+      "message": "I hate debugging PHP applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 722,
+      "message": "My name is Alex Rivera.",
+      "has_memory": true
+    },
+    {
+      "turn": 723,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 724,
+      "message": "I promise to deploy fraud-detection-ml this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 725,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 726,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 727,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 728,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 729,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 730,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 731,
+      "message": "My favorite programming language is Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 732,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 733,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 734,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 735,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 736,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 737,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 738,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 739,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 740,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 741,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 742,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 743,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 744,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 745,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 746,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 747,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 748,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 749,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 750,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 751,
+      "message": "I hate debugging PHP applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 752,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 753,
+      "message": "I cannot use Azure due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 754,
+      "message": "I'll finish the fraud-detection-ml project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 755,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 756,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 757,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 758,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 759,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 760,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 761,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 762,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 763,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 764,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 765,
+      "message": "In my experience building distributed systems, AWS has better networking performance compared to other providers especially for cross-region communication.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 766,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 767,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 768,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 769,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 770,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 771,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 772,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 773,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 774,
+      "message": "I'm committed to learning JavaScript this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 775,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 776,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 777,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 778,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 779,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 780,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 781,
+      "message": "I usually write code in Go.",
+      "has_memory": true
+    },
+    {
+      "turn": 782,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 783,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 784,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 785,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 786,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 787,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 788,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 789,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 790,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 791,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 792,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 793,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 794,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 795,
+      "message": "The recommendation-engine system handles customer payment processing, so reliability and data consistency are absolutely critical - that's why we chose PostgreSQL.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 796,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 797,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 798,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 799,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 800,
+      "message": "I love working with Go for backend systems.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 801,
+      "message": "I usually write code in Python.",
+      "has_memory": true
+    },
+    {
+      "turn": 802,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 803,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 804,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 805,
+      "message": "Always use Go for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 806,
+      "message": "What do you remember about my work?",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 807,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 808,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 809,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 810,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 811,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 812,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 813,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 814,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 815,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 816,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 817,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 818,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 819,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 820,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 821,
+      "message": "I usually write code in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 822,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 823,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 824,
+      "message": "I'll finish the real-time-analytics project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 825,
+      "message": "When building microservices, Go is significantly more efficient than PHP because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 826,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 827,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 828,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 829,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 830,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 831,
+      "message": "I hate debugging Ruby applications.",
+      "has_memory": true
+    },
+    {
+      "turn": 832,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 833,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 834,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 835,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 836,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 837,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 838,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 839,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 840,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 841,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 842,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 843,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 844,
+      "message": "I promise to deploy recommendation-engine this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 845,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 846,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 847,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 848,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 849,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 850,
+      "message": "My favorite language for backend work is Go.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 851,
+      "message": "I dislike using Scala for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 852,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 853,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 854,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 855,
+      "message": "When building microservices, Go is significantly more efficient than Scala because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 856,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 857,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 858,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 859,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 860,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 861,
+      "message": "I dislike using Scala for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 862,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 863,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 864,
+      "message": "I'll finish the recommendation-engine project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 865,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 866,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 867,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 868,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 869,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 870,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 871,
+      "message": "I dislike using PHP for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 872,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 873,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 874,
+      "message": "I'm committed to learning Go this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 875,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 876,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 877,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 878,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 879,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 880,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 881,
+      "message": "I usually write code in Go.",
+      "has_memory": true
+    },
+    {
+      "turn": 882,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 883,
+      "message": "I can't work with MySQL in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 884,
+      "message": "I promise to deploy recommendation-engine this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 885,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 886,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 887,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 888,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 889,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 890,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 891,
+      "message": "I usually write code in Go.",
+      "has_memory": true
+    },
+    {
+      "turn": 892,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 893,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 894,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 895,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 896,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 897,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 898,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 899,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 900,
+      "message": "I prefer using Go for backend development.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 901,
+      "message": "I always use VS Code for my development work.",
+      "has_memory": true
+    },
+    {
+      "turn": 902,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 903,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 904,
+      "message": "I'll finish the fraud-detection-ml project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 905,
+      "message": "Always test on AWS before deploying.",
+      "has_memory": true
+    },
+    {
+      "turn": 906,
+      "message": "What programming languages do I use?",
+      "has_memory": false,
+      "is_query": true
+    },
+    {
+      "turn": 907,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 908,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 909,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 910,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 911,
+      "message": "I enjoy coding in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 912,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 913,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 914,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 915,
+      "message": "When building microservices, Go is significantly more efficient than Scala because of its concurrency model and we've consistently seen 3x better throughput in production.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 916,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 917,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 918,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 919,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 920,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 921,
+      "message": "My favorite programming language is Go.",
+      "has_memory": true
+    },
+    {
+      "turn": 922,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 923,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 924,
+      "message": "I'll finish the fraud-detection-ml project by next Friday.",
+      "has_memory": true
+    },
+    {
+      "turn": 925,
+      "message": "Remember to back up PostgreSQL daily.",
+      "has_memory": true
+    },
+    {
+      "turn": 926,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 927,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 928,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 929,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 930,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 931,
+      "message": "My favorite programming language is JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 932,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 933,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 934,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 935,
+      "message": "Always use Python for new services.",
+      "has_memory": true
+    },
+    {
+      "turn": 936,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 937,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 938,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 939,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 940,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 941,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 942,
+      "message": "My role is Senior ML Engineer.",
+      "has_memory": true
+    },
+    {
+      "turn": 943,
+      "message": "I can't work with SQLite in production.",
+      "has_memory": true
+    },
+    {
+      "turn": 944,
+      "message": "I promise to deploy fraud-detection-ml this month.",
+      "has_memory": true
+    },
+    {
+      "turn": 945,
+      "message": "Our entire data pipeline relies on PostgreSQL, and after evaluating alternatives, we found that switching away would cost us months of migration time.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 946,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 947,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 948,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 949,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 950,
+      "message": "I love working with Go for backend systems.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    },
+    {
+      "turn": 951,
+      "message": "I love working with PostgreSQL for data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 952,
+      "message": "I work for DataFlow Inc as a developer.",
+      "has_memory": true
+    },
+    {
+      "turn": 953,
+      "message": "I cannot use DigitalOcean due to company policy.",
+      "has_memory": true
+    },
+    {
+      "turn": 954,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 955,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 956,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 957,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 958,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 959,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 960,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 961,
+      "message": "I enjoy coding in JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 962,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 963,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 964,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 965,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 966,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 967,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 968,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 969,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 970,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 971,
+      "message": "I dislike using Scala for production code.",
+      "has_memory": true
+    },
+    {
+      "turn": 972,
+      "message": "I work at DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 973,
+      "message": "I have to deploy everything on AWS.",
+      "has_memory": true
+    },
+    {
+      "turn": 974,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 975,
+      "message": "The real-time-analytics system handles customer payment processing, so reliability and data consistency are absolutely critical - that's why we chose PostgreSQL.",
+      "has_memory": true,
+      "is_llm_test": true
+    },
+    {
+      "turn": 976,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 977,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 978,
+      "message": "Let me think about that.",
+      "has_memory": false
+    },
+    {
+      "turn": 979,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 980,
+      "message": "That makes sense.",
+      "has_memory": false
+    },
+    {
+      "turn": 981,
+      "message": "My favorite programming language is JavaScript.",
+      "has_memory": true
+    },
+    {
+      "turn": 982,
+      "message": "I live in San Francisco.",
+      "has_memory": true
+    },
+    {
+      "turn": 983,
+      "message": "I need to use VS Code for consistency.",
+      "has_memory": true
+    },
+    {
+      "turn": 984,
+      "message": "I'll migrate to PostgreSQL by end of quarter.",
+      "has_memory": true
+    },
+    {
+      "turn": 985,
+      "message": "Make sure to use VS Code for all code reviews.",
+      "has_memory": true
+    },
+    {
+      "turn": 986,
+      "message": "Interesting point.",
+      "has_memory": false
+    },
+    {
+      "turn": 987,
+      "message": "Good morning!",
+      "has_memory": false
+    },
+    {
+      "turn": 988,
+      "message": "Got it, understood.",
+      "has_memory": false
+    },
+    {
+      "turn": 989,
+      "message": "Sounds good to me.",
+      "has_memory": false
+    },
+    {
+      "turn": 990,
+      "message": "Thanks for the update!",
+      "has_memory": false
+    },
+    {
+      "turn": 991,
+      "message": "I prefer using JavaScript for backend development.",
+      "has_memory": true
+    },
+    {
+      "turn": 992,
+      "message": "My company is DataFlow Inc.",
+      "has_memory": true
+    },
+    {
+      "turn": 993,
+      "message": "I must use PostgreSQL for all data storage.",
+      "has_memory": true
+    },
+    {
+      "turn": 994,
+      "message": "I'm committed to learning Python this year.",
+      "has_memory": true
+    },
+    {
+      "turn": 995,
+      "message": "Never deploy on Fridays.",
+      "has_memory": true
+    },
+    {
+      "turn": 996,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 997,
+      "message": "I'll look into that.",
+      "has_memory": false
+    },
+    {
+      "turn": 998,
+      "message": "Yeah, exactly.",
+      "has_memory": false
+    },
+    {
+      "turn": 999,
+      "message": "Hey, how's it going?",
+      "has_memory": false
+    },
+    {
+      "turn": 1000,
+      "message": "My favorite language for backend work is Go.",
+      "has_memory": true,
+      "is_duplicate_test": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+# Phase 5: Evaluation Framework Requirements
+# Install with: pip install -r requirements_evaluation.txt
+
+# Existing dependencies
+redis==5.0.1
+python-dateutil==2.8.2
+qdrant-client==1.7.0
+sentence-transformers>=3.0.0
+numpy>=1.21.0
+
+# LLM providers (optional)
+openai>=1.0.0
+anthropic>=0.18.0
+groq>=0.4.0
+
+# Evaluation frameworks
+ragas>=0.1.0              # RAG evaluation framework
+datasets>=2.14.0          # For data handling (RAGAS dependency)
+langchain>=0.1.0          # For RAGAS integration
+langchain-community>=0.0.10
+tiktoken>=0.5.0           # Token counting
+
+# Testing and metrics
+pytest>=7.4.0             # Test framework
+pytest-cov>=4.1.0         # Coverage reports
+scikit-learn>=1.3.0       # Additional metrics (precision, recall, F1)
+
+# Visualization and reporting
+matplotlib>=3.7.0         # Plotting
+seaborn>=0.12.0          # Statistical visualization
+pandas>=2.0.0            # Data analysis
