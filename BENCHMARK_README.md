@@ -183,6 +183,71 @@ first, so a VM that doesn't expose AMX to the guest fails visibly rather than qu
 producing a slow binary. Confirm AMX landed by checking the `system_info` line
 `llama-server` prints when it loads a model.
 
+### "But llama.cpp loses context / quality"
+
+Partly true, and the true parts are specific and avoidable. Sorted by what actually bites:
+
+**1. `--ctx-size` is divided across `--parallel` slots. This is the big one.**
+`--ctx-size 8192 --parallel 10` gives each request ~819 tokens. The reader's prompt is
+~3.5k tokens, so it gets **silently truncated** and the model answers from a fragment of
+its memory context. That is almost certainly the "context loss" you have heard about, and
+it is a misconfiguration, not an engine defect. `serve_local_model.sh` sizes the total as
+`CTX_PER_SLOT × PARALLEL` — **but verify it**: `llama-server` logs `n_ctx_per_seq = ...` at
+startup. If that is smaller than 8192, set `CTX_TOTAL` explicitly and re-check.
+
+**2. Silent context shifting.** By default an over-long prompt can lose its *beginning* —
+exactly where the memory context sits. The script passes `--no-context-shift` so it errors
+instead. An error is recoverable; quietly corrupted data is not.
+
+**3. Broken chat templates in GGUF conversions.** This is real and documented — Qwen3 GGUFs
+had template bugs that were fixed and re-uploaded. A wrong template degrades output badly
+and is easily mistaken for model or engine weakness. Use official or Unsloth GGUFs, pass
+`--jinja`, and eyeball a few generations before trusting a run.
+
+**4. KV-cache quantisation** measurably hurts. Default is `f16`; the script pins
+`--cache-type-k/v f16` so nobody later "saves RAM" by quantising it.
+
+**5. i-quants without an imatrix** degrade noticeably. Use imatrix-calibrated quants —
+Unsloth's `UD-*` are.
+
+**6. Q4 vs BF16 is a genuine fidelity loss.** This one is quantisation, not llama.cpp:
+vLLM at BF16 would be higher fidelity, at ~70 GB instead of ~22 GB for 35B-A3B. Reported
+comparisons put Q8 vs Q4_K_M as "hard to notice in conversation" — but *hard to notice in
+conversation* is not the same as *no effect on a benchmark*, which is the honest residual
+risk here.
+
+**What I found no evidence for:** llama.cpp being inherently worse than vLLM at the *same*
+quantisation. The documented quality complaints trace to template misconfiguration and KV
+quantisation, not to the engine.
+
+### Don't take my word for it — measure it
+
+```bash
+python -m benchmarks.calibrate --turns 40 \
+    --ref-provider groq --ref-model llama-3.3-70b-versatile \
+    --alt-provider openai --alt-model qwen3.6-35b-a3b \
+    --alt-base-url http://127.0.0.1:8080/v1
+```
+
+This pushes the same 40 real LoCoMo turns through Memora's actual extraction pipeline twice
+— once on hosted 70B, once on your local server — and reports how much they agree: recall
+against the reference, type agreement, content similarity, and how often the reference
+extracted something where the local model extracted nothing. Extraction needs no Redis or
+Qdrant, so it costs minutes and a few thousand tokens.
+
+Above ~80% recall and type agreement, the local model is a fair substitute. Below ~60%,
+extraction quality would confound the score — the number would reflect your local model
+rather than Memora — so keep extraction on the API or fix the setup first.
+
+**Why this matters more than the general argument:** worse extraction means worse memories
+means lower recall, so a degraded local model depresses the benchmark for reasons unrelated
+to Memora's architecture. That confound is worth ten minutes to rule out.
+
+Note the risk is already structurally contained: the judge stays on the API, and extraction
+is structured JSON with a low quality bar — the least fidelity-sensitive role in the
+pipeline. Also remember `--no-dates` and similar ablations exist precisely so you can
+isolate this kind of variable.
+
 ### Quantisation: test Q8_0 as well as Q4
 
 Counter-intuitive but worth measuring. **AMX natively supports only BF16 and INT8.**

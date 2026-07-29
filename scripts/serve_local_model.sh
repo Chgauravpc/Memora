@@ -42,11 +42,22 @@ NUMA_NODE="${NUMA_NODE:-1}"
 THREADS="${THREADS:-22}"
 PORT="${PORT:-8080}"
 PARALLEL="${PARALLEL:-10}"    # concurrent slots; match the benchmark's --workers
-# Per-slot context. Total KV = CTX * PARALLEL, so this is 10 x 8192 = 81920 by default.
-# The reader's prompt is ~3.5k tokens, so 8192 is comfortable; do not inflate it, KV
-# cache costs RAM and larger contexts slow attention.
+#
+# ---- THE CONTEXT FOOTGUN --------------------------------------------------------------
+# llama-server divides --ctx-size across --parallel slots. So `--ctx-size 8192 --parallel
+# 10` gives each request only ~819 tokens. The reader's prompt is ~3.5k tokens, so it
+# would be SILENTLY TRUNCATED and the model would answer from a fragment of its memory
+# context -- which looks exactly like "llama.cpp loses context" but is a misconfiguration.
+#
+# We therefore size the TOTAL as per-slot x slots.
+#
+# VERIFY THIS at startup. llama-server logs the effective per-sequence context, e.g.
+#     main: n_ctx_per_seq = 8192
+# If that number is smaller than CTX_PER_SLOT below, the division rule differs in your
+# build -- set CTX_TOTAL explicitly and re-check. Do not skip this; a truncated reader
+# prompt silently invalidates the benchmark.
 CTX_PER_SLOT="${CTX_PER_SLOT:-8192}"
-CTX=$(( CTX_PER_SLOT * PARALLEL ))
+CTX="${CTX_TOTAL:-$(( CTX_PER_SLOT * PARALLEL ))}"
 # Prefill batch sizes. Bigger batches give AMX longer matmuls to chew on, which is where
 # the throughput is on this CPU. 2048/512 is a reasonable throughput-oriented default.
 BATCH="${BATCH:-2048}"
@@ -115,10 +126,19 @@ exec "${NUMACTL[@]}" "$SERVER_BIN" \
   --batch-size "$BATCH" \
   --ubatch-size "$UBATCH" \
   --cont-batching \
+  --no-context-shift \
+  --cache-type-k f16 \
+  --cache-type-v f16 \
   --mlock \
   --numa numactl \
   --jinja \
   "$@"
+
+# --no-context-shift: fail loudly instead of silently dropping the START of an over-long
+#   prompt. The memory context is at the start of the reader's prompt, so silent shifting
+#   would quietly gut the thing being measured. An error is recoverable; bad data is not.
+# --cache-type-k/v f16: this is already the default, pinned explicitly so nobody
+#   "optimises" RAM later by quantising the KV cache, which does measurably degrade output.
 
 # NOTE on Qwen3 / Qwen3.6: these ship a THINKING mode. For Stage 3 extraction -- a
 # structured-JSON task capped at STAGE_3_MAX_TOKENS = 500 -- a reasoning trace will eat the
