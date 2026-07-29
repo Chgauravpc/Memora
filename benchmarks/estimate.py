@@ -5,7 +5,8 @@ Reads the ACTUAL dataset when present, so the numbers are derived from real turn
 question counts rather than remembered ballparks. Falls back to documented approximations
 with a loud warning when the dataset has not been downloaded yet.
 
-The headline conclusion for a 32-core box: CPU is not the constraint. Embedding, Redis and
+The headline conclusion for the dual-socket 64-core target box: CPU is not the constraint.
+Embedding, Redis and
 Qdrant work is a rounding error next to LLM API latency, and LoCoMo only has ~10
 conversations, so there are only ~10 units of useful parallelism no matter how many cores
 are available. Wall clock is set by API throughput -- provider tier and number of separate
@@ -165,7 +166,7 @@ def estimate(
     print()
     print("notes")
     print("-" * 68)
-    print("  * CPU is not the bottleneck. Non-LLM work is ~90 ms/turn; on 32 cores with")
+    print("  * CPU is not the bottleneck. Non-LLM work is ~90 ms/turn; on 64 cores with")
     print(f"    {effective} workers that is under 5% utilisation. Adding cores does nothing.")
     print(f"  * LoCoMo has only {convs} conversations, so parallelism caps at {convs}.")
     print("  * RAM: each worker loads its own sentence-transformers model + torch,")

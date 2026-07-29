@@ -87,9 +87,112 @@ because the reader's 3k-token context dominates the token bill, not extraction.
 hard floor of ~8 days, and a daily cap cannot be parallelised around. This is the one thing
 that will actually block you.
 
-### The Xeon is not the bottleneck
+## Running the LLM locally on CPU
 
-32 cores / 64 threads is heavily over-provisioned for this workload, for two reasons:
+Optional, and it removes the rate-limit problem entirely — a self-hosted model has no
+daily cap. It trades a hard blocker for slower throughput.
+
+### Hardware, as reported by `lscpu`
+
+2× Xeon Gold 6530 — **64 physical cores** (32/socket, hyperthreading **off**, so 64 CPUs =
+64 cores), **2 NUMA nodes**, 320 MiB L3 total. Critically it has **AMX**
+(`amx_bf16`/`amx_tile`/`amx_int8`) plus `avx512_bf16` and `avx512_fp16`.
+
+Two facts drive everything below:
+
+- **Decode is memory-bandwidth bound.** Generating one token reads every *active* weight
+  from DRAM, so tok/s ≈ bandwidth ÷ active-weight-bytes. DDR5-4800 × 8 channels/socket is
+  ~307 GB/s theoretical, ~200 GB/s achieved. This is why a **Mixture-of-Experts** model
+  wins massively: Qwen3-30B-A3B activates only ~3.3B of its 30.5B parameters, reading
+  ~2 GB per token instead of ~18 GB.
+- **Prefill is compute bound, and AMX is a 3–4× lever** — but only with a runtime that
+  uses it. Plain llama.cpp on AVX-512 leaves most of Emerald Rapids' matmul throughput on
+  the table. Prefill dominates this benchmark (~10.8M tokens) because the reader ships ~3k
+  tokens of memory context per question.
+
+### Which model
+
+```bash
+python -m benchmarks.local_estimate --list --cores 22 --runtime amx
+python -m benchmarks.local_estimate --model qwen3-30b-a3b --cores 22 --split hybrid
+```
+
+On 22 cores, batch 8, ~200 GB/s, AMX runtime — modelled, not measured:
+
+| model | RAM | decode tok/s | prefill tok/s | extraction only | all-local |
+|---|---|---|---|---|---|
+| qwen2.5-7b | 10 G | 228 | 1230 | 1.8 h | 3.6 h |
+| llama-3.1-8b | 10 G | 217 | 1169 | 1.9 h | 3.8 h |
+| qwen2.5-14b | 14 G | 117 | 632 | 3.5 h | 7.1 h |
+| **qwen3-30b-a3b** ★ | 24 G | **525** | **2833** | **0.8 h** | **1.6 h** |
+| qwen2.5-32b | 25 G | 53 | 288 | 7.6 h | 15.5 h |
+| llama-3.3-70b | 48 G | 25 | 132 | 16.6 h | 33.6 h |
+
+Without AMX (plain llama.cpp), multiply the prefill column by ~0.25 and expect
+`qwen3-30b-a3b` extraction to take ~1.7 h and all-local ~4.6 h.
+
+**Recommendation: `Qwen3-30B-A3B-Instruct` at Q4_K_M.** It gives 30B-class extraction
+quality at better-than-8B decode speed, because only ~3.3B parameters are active per
+token. Dense 32B and 70B are not viable for the ~4,200 extraction calls — 8–25 tok/s means
+days, not hours.
+
+**Do not run the judge locally.** Judge quality moves the reported score directly, and
+published LoCoMo numbers use strong judges; a 7–30B local judge adds grading noise to the
+exact number you are trying to publish. The recommended split is **extraction local,
+reader and judge on API** — that is 4,200 calls moved off the API and only 3,972 left,
+which fits comfortably in modest rate limits and costs ~$3.
+
+### Pointing Memora at it
+
+No code change needed — the OpenAI SDK reads `OPENAI_BASE_URL` from the environment:
+
+```bash
+scripts/serve_local_model.sh /path/to/Qwen3-30B-A3B-Q4_K_M.gguf   # node1, 22 threads
+
+# in .env
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=http://127.0.0.1:8080/v1
+OPENAI_API_KEY=local
+LLM_EXTRACTION_MODEL=qwen3-30b-a3b
+BENCH_LLM_PROVIDER=groq        # keep reader+judge on the API
+```
+
+Note this **changes the system under test**: the default is `llama-3.3-70b-versatile` on
+Groq, so a local Qwen3-30B-A3B measures Memora+Qwen3-30B. Legitimate, but report it.
+
+### Can both run at once? Yes — pin them to different sockets
+
+The benchmark's own CPU appetite is small: 10 workers × 1 thread (the runner sets
+`OMP_NUM_THREADS=1`), plus Redis and Qdrant ≈ **15–16 cores of the 64**. Cores are not the
+contended resource.
+
+**Memory bandwidth is.** Both the model's decode loop and the benchmark's embedding/Qdrant
+traffic pull from DRAM, and on one socket they would fight for the same ~200 GB/s. Because
+each socket has independent memory controllers, splitting them across NUMA nodes makes the
+contention essentially disappear:
+
+```bash
+# terminal 1 - model on node1 (22-28 of its 32 cores)
+NUMA_NODE=1 THREADS=22 scripts/serve_local_model.sh model.gguf
+
+# terminal 2 - benchmark on node0
+BENCH_NUMA_NODE=0 python run_locomo.py --workers 10
+```
+
+`numactl` must be installed (`sudo apt install numactl`); without it the model straddles
+both sockets, every weight read risks crossing the UPI link, and inference can lose half
+its speed or more. The runner honours `BENCH_NUMA_NODE`, and `serve_local_model.sh` honours
+`NUMA_NODE`.
+
+**RAM is the one thing to verify** — `lscpu` does not report it. Run `free -g`. Budget
+~24 GB for the model plus ~13 GB for the benchmark (10 workers × ~1 GB, Redis, Qdrant), so
+**~40 GB for the recommended setup**; ~64 GB if you insist on a dense 70B. A dual-socket
+board with 16 DDR5 channels is very unlikely to have less than 128 GB, but check.
+
+### The Xeon is not the bottleneck (for the API path)
+
+64 physical cores across 2 sockets is heavily over-provisioned for the API path, for two
+reasons:
 
 1. **Non-LLM work is ~90 ms/turn.** Embedding (MiniLM, 384-dim), Redis writes, Qdrant
    upserts, and consolidation are a rounding error next to a ~1.2 s LLM round trip. At 10

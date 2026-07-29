@@ -7,7 +7,7 @@ predictions with stated reasoning, not measurements.
 > [BENCHMARK_README.md](BENCHMARK_README.md) for how to run it, and `benchmarks/`.
 >
 > Two figures in Part 3 below are superseded by that document, which targets a specific
-> 32-core Xeon Gold 6530 rather than a generic box:
+> dual-socket Xeon Gold 6530 (64 physical cores) rather than a generic box:
 > - LoCoMo wall clock is **~40 min – 1 h**, not the 3–6 h estimated here. That figure
 >   assumed modest parallelism; with all 10 conversations running concurrently the ingest
 >   phase fully overlaps and API throughput becomes the only limit.

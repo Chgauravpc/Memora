@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -63,6 +64,16 @@ class Slot:
             "--sample-id", sample_id,
             "--out", str(out_path),
         ] + extra_args
+
+        # Optional NUMA pinning. On the dual-socket target box the intended layout is a
+        # locally-served LLM on one node and the benchmark on the other, so each gets its
+        # own memory controllers and they never contend for DRAM bandwidth -- which is the
+        # binding resource for CPU inference. Set BENCH_NUMA_NODE=0 alongside
+        # NUMA_NODE=1 for scripts/serve_local_model.sh.
+        numa_node = os.getenv("BENCH_NUMA_NODE")
+        if numa_node and shutil.which("numactl"):
+            cmd = ["numactl", f"--cpunodebind={numa_node}",
+                   f"--membind={numa_node}"] + cmd
 
         log_path = LOG_DIR / f"worker_{sample_id}.log"
         self.log_handle = log_path.open("w", encoding="utf-8")
