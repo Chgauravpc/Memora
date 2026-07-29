@@ -92,20 +92,35 @@ class LLMClient:
 
     # ---------------------------------------------------------------- clients
 
-    def _keys(self, *names: str) -> List[str]:
+    def _keys(self, *names: str, numbered_prefix: Optional[str] = None,
+              max_numbered: int = 64) -> List[str]:
+        """
+        Collect API keys from the environment, de-duplicated, order preserved.
+
+        `numbered_prefix` additionally scans PREFIX_1..PREFIX_N. Groq rate limits are
+        per-organization, so multiple keys only add throughput when they belong to
+        separate accounts -- but the harness cannot tell, so it uses whatever it is given
+        and round-robins across them.
+        """
+        candidates = [os.getenv(n) for n in names]
+        if numbered_prefix:
+            candidates += [os.getenv(f"{numbered_prefix}_{i}")
+                           for i in range(1, max_numbered + 1)]
         keys: List[str] = []
-        for name in names:
-            v = os.getenv(name)
-            if v and v.strip() and not v.strip().startswith(("gsk-your", "sk-your", "sk-ant-your")):
-                keys.append(v.strip())
-        # de-dup, preserve order
+        for v in candidates:
+            if not v or not v.strip():
+                continue
+            v = v.strip()
+            if v.startswith(("gsk-your", "sk-your", "sk-ant-your")):
+                continue
+            keys.append(v)
         return list(dict.fromkeys(keys))
 
     def _build_clients(self) -> None:
         if self.provider == "groq":
             from groq import Groq
-            keys = self._keys("GROQ_API_KEY", "GROQ_API_KEY_1", "GROQ_API_KEY_2",
-                              "GROQ_API_KEY_3", "BENCH_GROQ_API_KEY")
+            keys = self._keys("GROQ_API_KEY", "BENCH_GROQ_API_KEY",
+                              numbered_prefix="GROQ_API_KEY")
             if not keys:
                 raise RuntimeError("No Groq API key found (set GROQ_API_KEY)")
             # max_retries=0: this class owns retry policy, not the SDK.

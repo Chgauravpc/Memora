@@ -152,6 +152,14 @@ def check_llm() -> None:
         report(BAD, "LLM client", str(exc))
         return
 
+    n = len(client._clients)
+    if client.provider == "groq":
+        # Free tier binds on tokens/day (100k for 70B), so the account count decides
+        # whether a free run is possible at all. See benchmarks/free_tier.py.
+        report(OK, "Groq keys configured", f"{n} "
+               f"({'assumed separate accounts' if n > 1 else 'single account'})"
+               + ("  - judge-only free run needs ~6" if n < 6 else ""))
+
     reply = client.chat(user="Reply with the single word: ready", max_tokens=8)
     if reply and "ready" in reply.lower():
         report(OK, "LLM live call", f"{client.provider}/{client.model}")

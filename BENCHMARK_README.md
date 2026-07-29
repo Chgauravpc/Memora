@@ -189,6 +189,61 @@ its speed or more. The runner honours `BENCH_NUMA_NODE`, and `serve_local_model.
 **~40 GB for the recommended setup**; ~64 GB if you insist on a dense 70B. A dual-socket
 board with 16 DDR5 channels is very unlikely to have less than 128 GB, but check.
 
+## Running it completely free
+
+```bash
+python -m benchmarks.free_tier --keys 6
+```
+
+Groq free-tier limits (verified June 2026 — re-check, these move):
+
+| model | RPM | RPD | TPM | **TPD** |
+|---|---|---|---|---|
+| `llama-3.3-70b-versatile` | 30 | 1,000 | 12,000 | **100,000** |
+| `llama-3.1-8b-instant` | 30 | 14,400 | 6,000 | **500,000** |
+
+**Tokens per day is the binding limit, not requests per minute.** RPM throttles you for
+seconds; a daily cap cannot be waited out or parallelised around — only more accounts widen
+it. And limits are enforced **per organization**, so N keys from N different friends are N
+independent quotas, while N keys from one account are one quota.
+
+Token cost by role, at 70% escalation:
+
+| role | calls | tokens |
+|---|---|---|
+| extraction | 4,200 | 4,200,000 |
+| **reader** | 1,986 | **7,070,160** |
+| judge | 1,986 | **506,430** |
+
+The reader dominates because `MEMORY_TOKEN_BUDGET = 3000` puts ~3.5k input tokens in front
+of every question. That one setting is why an all-API free run is hopeless — it would need
+**148 free 70B accounts** to finish in a day.
+
+### The free configuration that works
+
+**Extraction and reader local, judge only on Groq free 70B.** The judge is by far the
+cheapest role in tokens *and* the one where model quality most directly moves the number
+you intend to publish, so it is exactly the right thing to spend a hosted quota on.
+
+| accounts | capacity/day | judge needs | verdict |
+|---|---|---|---|
+| 6 | 600,000 | 506,430 | fits, **18% headroom** |
+| 8 | 800,000 | 506,430 | comfortable |
+
+So **6 keys is already enough** — but the margin is thin, and a burst of retries or
+longer-than-modelled answers can push you over, in which case the run spills to a second
+day. That is survivable (the harness is resumable) but annoying. **8 keys is the comfortable
+number.**
+
+Alternatives, for completeness:
+
+- **Zero keys — fully local.** Free by construction, ~1.6–4.6 h. The judge is then a local
+  model, so grading is noisier; disclose it.
+- **Judge on free `llama-3.1-8b-instant`** — fits in 2 accounts thanks to the 500k TPD, but
+  an 8B grader is a weak judge and undermines the point of the exercise.
+- **Do not** try to assemble enough free accounts to host the reader: 89 of them. You own a
+  64-core AMX server; use it.
+
 ### The Xeon is not the bottleneck (for the API path)
 
 64 physical cores across 2 sockets is heavily over-provisioned for the API path, for two
