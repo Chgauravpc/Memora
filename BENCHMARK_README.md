@@ -103,8 +103,8 @@ Two facts drive everything below:
 - **Decode is memory-bandwidth bound.** Generating one token reads every *active* weight
   from DRAM, so tok/s ≈ bandwidth ÷ active-weight-bytes. DDR5-4800 × 8 channels/socket is
   ~307 GB/s theoretical, ~200 GB/s achieved. This is why a **Mixture-of-Experts** model
-  wins massively: Qwen3-30B-A3B activates only ~3.3B of its 30.5B parameters, reading
-  ~2 GB per token instead of ~18 GB.
+  wins massively: Qwen3.6-35B-A3B activates only ~3B of its 35B parameters, reading
+  ~1.8 GB per token instead of ~21 GB.
 - **Prefill is compute bound, and AMX is a 3–4× lever** — but only with a runtime that
   uses it. Plain llama.cpp on AVX-512 leaves most of Emerald Rapids' matmul throughput on
   the table. Prefill dominates this benchmark (~10.8M tokens) because the reader ships ~3k
@@ -114,7 +114,7 @@ Two facts drive everything below:
 
 ```bash
 python -m benchmarks.local_estimate --list --cores 22 --runtime amx
-python -m benchmarks.local_estimate --model qwen3-30b-a3b --cores 22 --split hybrid
+python -m benchmarks.local_estimate --model qwen3.6-35b-a3b --cores 22 --split hybrid
 ```
 
 On 22 cores, batch 8, ~200 GB/s, AMX runtime — modelled, not measured:
@@ -124,17 +124,24 @@ On 22 cores, batch 8, ~200 GB/s, AMX runtime — modelled, not measured:
 | qwen2.5-7b | 10 G | 228 | 1230 | 1.8 h | 3.6 h |
 | llama-3.1-8b | 10 G | 217 | 1169 | 1.9 h | 3.8 h |
 | qwen2.5-14b | 14 G | 117 | 632 | 3.5 h | 7.1 h |
-| **qwen3-30b-a3b** ★ | 24 G | **525** | **2833** | **0.8 h** | **1.6 h** |
+| qwen3-30b-a3b | 24 G | 525 | 2833 | 0.8 h | 1.6 h |
+| **qwen3.6-35b-a3b** ★ | 26 G | **578** | **3117** | **0.7 h** | **1.4 h** |
+| qwen3.6-27b (dense) | 21 G | 64 | 346 | 6.3 h | 12.9 h |
 | qwen2.5-32b | 25 G | 53 | 288 | 7.6 h | 15.5 h |
 | llama-3.3-70b | 48 G | 25 | 132 | 16.6 h | 33.6 h |
 
-Without AMX (plain llama.cpp), multiply the prefill column by ~0.25 and expect
-`qwen3-30b-a3b` extraction to take ~1.7 h and all-local ~4.6 h.
+Without AMX (plain llama.cpp), multiply the prefill column by ~0.25 — `qwen3.6-35b-a3b`
+extraction becomes ~1.5 h and all-local ~4 h. Still fine, which is why AMX is a
+nice-to-have for the MoE and a necessity for anything dense.
 
-**Recommendation: `Qwen3-30B-A3B-Instruct` at Q4_K_M.** It gives 30B-class extraction
-quality at better-than-8B decode speed, because only ~3.3B parameters are active per
-token. Dense 32B and 70B are not viable for the ~4,200 extraction calls — 8–25 tok/s means
-days, not hours.
+**Recommendation: `Qwen3.6-35B-A3B` at `UD-Q4_K_XL`.** Only ~3B of its 35B parameters are
+active per token, so it reads ~1.8 GB per token instead of ~21 GB: 35B-class extraction
+quality at *better than 8B* decode speed, in ~22 GB of RAM.
+
+Note the dense/MoE contrast in that table. `qwen3.6-27b` is *smaller* than
+`qwen3.6-35b-a3b` and needs *less* RAM, yet it is ~9× slower, because a dense model reads
+every weight for every token. Dense 27B/32B/70B are not viable for ~4,200 extraction
+calls — that is days, not hours.
 
 **Do not run the judge locally.** Judge quality moves the reported score directly, and
 published LoCoMo numbers use strong judges; a 7–30B local judge adds grading noise to the
@@ -142,18 +149,108 @@ exact number you are trying to publish. The recommended split is **extraction lo
 reader and judge on API** — that is 4,200 calls moved off the API and only 3,972 left,
 which fits comfortably in modest rate limits and costs ~$3.
 
+### Which runtime — this is the biggest lever
+
+**Build llama.cpp from source with AMX. Do not use Ollama or HuggingFace `transformers`
+for the actual run.** Runtime choice is worth 3–5× on this box, almost entirely because of
+whether AMX kernels are compiled in.
+
+| runtime | verdict |
+|---|---|
+| **llama.cpp, self-built with AMX** | **Use this.** GGUF Q4 keeps RAM at ~22 GB, native continuous batching, OpenAI-compatible `/v1`, best MoE support, full thread/NUMA control. |
+| `ik_llama.cpp` (fork) | Worth A/B testing — focused on CPU throughput and quantised MoE matmuls. Try if you want the last 20–30%. |
+| vLLM CPU backend | Best continuous batching at high concurrency and uses AMX via oneDNN — but it wants BF16/INT8, not GGUF, and 35B-A3B at BF16 is ~70 GB. Only if RAM is plentiful. |
+| OpenVINO GenAI / Model Server | Intel's own stack, excellent AMX-INT8 prefill. More setup friction (model conversion). |
+| **Ollama** | **Avoid for throughput.** It wraps llama.cpp but ships generic prebuilt binaries that lack AMX for this CPU, and hides thread/NUMA/batch tuning. Community numbers show Ollama at 55–60 tok/s where raw llama.cpp with explicit flags hit 100+ on identical hardware. |
+| HuggingFace `transformers` | **Worst option.** Python generate loop, no continuous batching, no AMX kernels without IPEX. Fine for a one-off sanity check, not for ~6,000 calls. |
+
+```bash
+bash scripts/build_llama_cpp.sh                              # ~5-10 min on 64 cores
+export PATH="$PWD/.cache/llama.cpp/build/bin:$PATH"
+```
+
+The flags that matter, and the one people miss:
+
+```
+-DGGML_AMX_TILE=ON -DGGML_AMX_INT8=ON -DGGML_AMX_BF16=ON
+-DGGML_AVX512_VNNI=ON      # <-- REQUIRED by the AMX code path; omit it and AMX is
+                           #     silently left out of the build
+-DGGML_NATIVE=ON
+```
+
+The build script checks `/proc/cpuinfo` for `amx_tile`/`amx_int8`/`amx_bf16`/`avx512_vnni`
+first, so a VM that doesn't expose AMX to the guest fails visibly rather than quietly
+producing a slow binary. Confirm AMX landed by checking the `system_info` line
+`llama-server` prints when it loads a model.
+
+### Quantisation: test Q8_0 as well as Q4
+
+Counter-intuitive but worth measuring. **AMX natively supports only BF16 and INT8.**
+`Q8_0` maps almost directly onto AMX-INT8 tiles; `Q4_K_M` needs more per-block dequant work
+before the matmul. So Q8_0 can win on *prefill* despite reading twice the bytes — and
+prefill is 10.3M of the 11.3M tokens in this workload.
+
+For a 3B-active MoE the decode cost is ~1.8 GB/token at Q4 vs ~3.2 GB at Q8, so decode gets
+slower while prefill gets faster. Given the prefill:decode ratio here, **benchmark both**
+rather than assuming Q4 is optimal. Unsloth's `UD-Q4_K_XL` dynamic quant is the best
+quality-per-byte 4-bit option if you stay at Q4.
+
+### Free speedups worth taking
+
+- **Continuous batching** (`--cont-batching`, `--parallel 10`) — the single biggest
+  software win after AMX. Weights are read once and reused across all in-flight requests,
+  so aggregate decode scales with slot count. Match `--parallel` to the benchmark's
+  `--workers`.
+- **`--mlock`** — pins weights in RAM. Without it a 22 GB model can be partially paged out
+  and decode collapses, since every token touches weights.
+- **Large prefill batches** (`--batch-size 2048 --ubatch-size 512`) — longer matmuls give
+  AMX more to chew on.
+- **MTP speculative decoding**, if your build supports it: `--spec-type draft-mtp
+  --spec-draft-n-max 2`. Worth ~1.15–1.25× on MoE models (more on dense). Speculative
+  decoding is *especially* valuable on bandwidth-bound CPU inference because it amortises
+  one weight read across several accepted tokens.
+- **`OMP_PROC_BIND=close`, `OMP_PLACES=cores`**, and `OMP_NUM_THREADS` = your thread count —
+  stops OpenMP from oversubscribing against llama.cpp's own pool.
+
+### Disable thinking mode
+
+Qwen3 and Qwen3.6 ship a reasoning mode. Stage 3 extraction is structured JSON capped at
+`STAGE_3_MAX_TOKENS = 500`; a reasoning trace will consume that entire budget, truncate the
+JSON, and cost several times the tokens per call. `serve_local_model.sh` passes `--jinja` and
+forwards extra arguments, so:
+
+```bash
+scripts/serve_local_model.sh model.gguf --chat-template-kwargs '{"enable_thinking":false}'
+```
+
+### Measure, don't trust the model
+
+Every throughput number in this file is derived from first principles, not measured. Get a
+real figure before planning around it:
+
+```bash
+llama-bench -m model.gguf -t 22 -p 3584 -n 128     # prefill 3.5k (reader-shaped), 128 decode
+```
+
+Then feed the result back in:
+`python -m benchmarks.local_estimate --model qwen3.6-35b-a3b --cores 22 --batch 10`.
+A community datapoint reports ~80 tok/s at 4-bit on this exact CPU, which suggests the
+modelled numbers here are conservative.
+
 ### Pointing Memora at it
 
 No code change needed — the OpenAI SDK reads `OPENAI_BASE_URL` from the environment:
 
 ```bash
-scripts/serve_local_model.sh /path/to/Qwen3-30B-A3B-Q4_K_M.gguf   # node1, 22 threads
+bash scripts/build_llama_cpp.sh && export PATH="$PWD/.cache/llama.cpp/build/bin:$PATH"
+scripts/serve_local_model.sh /path/to/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+  --chat-template-kwargs '{"enable_thinking":false}'
 
 # in .env
 LLM_PROVIDER=openai
 OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 OPENAI_API_KEY=local
-LLM_EXTRACTION_MODEL=qwen3-30b-a3b
+LLM_EXTRACTION_MODEL=qwen3.6-35b-a3b
 BENCH_LLM_PROVIDER=groq        # keep reader+judge on the API
 ```
 

@@ -41,25 +41,39 @@ fi
 NUMA_NODE="${NUMA_NODE:-1}"
 THREADS="${THREADS:-22}"
 PORT="${PORT:-8080}"
-CTX="${CTX:-8192}"
-PARALLEL="${PARALLEL:-8}"     # concurrent slots; batching is what makes decode fast
+PARALLEL="${PARALLEL:-10}"    # concurrent slots; match the benchmark's --workers
+# Per-slot context. Total KV = CTX * PARALLEL, so this is 10 x 8192 = 81920 by default.
+# The reader's prompt is ~3.5k tokens, so 8192 is comfortable; do not inflate it, KV
+# cache costs RAM and larger contexts slow attention.
+CTX_PER_SLOT="${CTX_PER_SLOT:-8192}"
+CTX=$(( CTX_PER_SLOT * PARALLEL ))
+# Prefill batch sizes. Bigger batches give AMX longer matmuls to chew on, which is where
+# the throughput is on this CPU. 2048/512 is a reasonable throughput-oriented default.
+BATCH="${BATCH:-2048}"
+UBATCH="${UBATCH:-512}"
 SERVER_BIN="${SERVER_BIN:-llama-server}"
 
 if ! command -v "$SERVER_BIN" >/dev/null 2>&1; then
-  cat >&2 <<EOF
+  # Fall back to the in-repo build if it exists but is not on PATH.
+  if [[ -x "$REPO_ROOT/.cache/llama.cpp/build/bin/llama-server" ]]; then
+    SERVER_BIN="$REPO_ROOT/.cache/llama.cpp/build/bin/llama-server"
+    echo "using in-repo build: $SERVER_BIN"
+  else
+    cat >&2 <<EOF
 ERROR: '$SERVER_BIN' not on PATH.
 
-Build llama.cpp with AMX + AVX-512 (this CPU has amx_bf16/amx_tile/amx_int8):
-    git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
-    cmake --build build -j 64
-    export PATH="\$PWD/build/bin:\$PATH"
+Build it WITH AMX (this CPU has amx_tile/amx_int8/amx_bf16, and prebuilt binaries
+do not include those kernels):
 
-Or set SERVER_BIN to an OpenAI-compatible server of your choice (vLLM CPU,
-ipex-llm, OpenVINO GenAI). Anything exposing /v1/chat/completions works --
+    bash scripts/build_llama_cpp.sh
+    export PATH="\$PWD/.cache/llama.cpp/build/bin:\$PATH"
+
+Or set SERVER_BIN to any OpenAI-compatible server (vLLM CPU, ipex-llm,
+OpenVINO Model Server). Anything exposing /v1/chat/completions works --
 Memora reaches it through OPENAI_BASE_URL.
 EOF
-  exit 1
+    exit 1
+  fi
 fi
 
 NUMACTL=()
@@ -73,12 +87,24 @@ fi
 
 echo "model    : $MODEL"
 echo "threads  : $THREADS"
-echo "context  : $CTX   slots: $PARALLEL"
+echo "slots    : $PARALLEL x ${CTX_PER_SLOT} ctx = ${CTX} total"
+echo "batch    : $BATCH / ubatch $UBATCH"
 echo "endpoint : http://127.0.0.1:${PORT}/v1"
 echo
 
-# One thread per physical core; this CPU has hyperthreading OFF so there is no sibling
-# contention to worry about, but oversubscribing past the node's 32 cores still hurts.
+# OpenMP must not oversubscribe: llama.cpp manages its own thread pool, and letting OpenMP
+# also spawn per-core teams causes heavy contention on a 64-core box.
+export OMP_NUM_THREADS="$THREADS"
+export OMP_PROC_BIND=close
+export OMP_PLACES=cores
+
+# One thread per physical core. Hyperthreading is OFF on this CPU so there are no siblings
+# to avoid, but oversubscribing past the node's 32 cores still costs throughput.
+#
+# --mlock pins weights in RAM: without it a 22 GB model can be partially paged out and
+# decode (which touches weights every token) collapses.
+# --cont-batching is what makes concurrency pay -- weights are read once and reused across
+# all in-flight requests, so aggregate decode scales with slot count.
 exec "${NUMACTL[@]}" "$SERVER_BIN" \
   --model "$MODEL" \
   --host 127.0.0.1 --port "$PORT" \
@@ -86,6 +112,17 @@ exec "${NUMACTL[@]}" "$SERVER_BIN" \
   --threads-batch "$THREADS" \
   --ctx-size "$CTX" \
   --parallel "$PARALLEL" \
+  --batch-size "$BATCH" \
+  --ubatch-size "$UBATCH" \
   --cont-batching \
   --mlock \
-  --numa numactl
+  --numa numactl \
+  --jinja \
+  "$@"
+
+# NOTE on Qwen3 / Qwen3.6: these ship a THINKING mode. For Stage 3 extraction -- a
+# structured-JSON task capped at STAGE_3_MAX_TOKENS = 500 -- a reasoning trace will eat the
+# entire output budget, truncate the JSON, and cost many times the tokens per call. Disable
+# it. With --jinja the template accepts:
+#     --chat-template-kwargs '{"enable_thinking":false}'
+# Pass extra args straight through to this script; they are forwarded above.

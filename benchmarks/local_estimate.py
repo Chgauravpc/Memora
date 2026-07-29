@@ -92,8 +92,16 @@ MODELS: Dict[str, LocalModel] = {
         "Noticeably better extraction than 7-8B, still tolerable decode speed."),
     "qwen3-30b-a3b": LocalModel(
         "qwen3-30b-a3b", "Qwen3-30B-A3B-Instruct (MoE)", 30.5, 3.3, Q4, "Q4_K_M",
-        "RECOMMENDED. 30B-class quality at better-than-8B decode speed: only ~3.3B "
-        "parameters are active per token, so ~2 GB is read per token instead of ~18 GB."),
+        "Previous generation of the MoE line; superseded by qwen3.6-35b-a3b."),
+    "qwen3.6-35b-a3b": LocalModel(
+        "qwen3.6-35b-a3b", "Qwen3.6-35B-A3B (MoE)", 35.0, 3.0, Q4, "UD-Q4_K_XL",
+        "RECOMMENDED. Current generation. ~3B active of 35B total, so ~1.8 GB is read "
+        "per token instead of ~21 GB -- 35B-class quality at better-than-8B decode "
+        "speed. ~22 GB at 4-bit. Disable thinking mode for extraction."),
+    "qwen3.6-27b": LocalModel(
+        "qwen3.6-27b", "Qwen3.6-27B (dense)", 27.0, 27.0, Q4, "UD-Q4_K_XL",
+        "Dense sibling of 35B-A3B; better MTP speculative-decode gains (1.4-2x vs "
+        "1.15-1.25x) but ~9x more bytes read per token. Worse trade here."),
     "qwen2.5-32b": LocalModel(
         "qwen2.5-32b", "Qwen2.5-32B-Instruct", 32.5, 32.5, Q4, "Q4_K_M",
         "Best dense quality within reach, but decode is slow; only sensible for the "
@@ -212,7 +220,7 @@ def show_table(cores: int, batch: int, runtime: str, bandwidth: float,
         h_extract = hours(s3_pre, pre_r) + hours(s3_dec, dec_r)
         h_all = hours(all_pre, pre_r) + hours(all_dec, dec_r)
         ram = m.weights_gb + 0.4 * batch + 2
-        label = m.key + (" *" if m.key == "qwen3-30b-a3b" else "")
+        label = m.key + (" *" if m.key == "qwen3.6-35b-a3b" else "")
         print(f"{label:<26}{ram:>6.0f}G{dec_r:>9.0f}{pre_r:>9.0f}"
               f"{h_extract:>9.1f}h{h_all:>10.1f}h")
     print()
