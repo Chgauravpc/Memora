@@ -3,6 +3,21 @@
 Status: **plan only — nothing here has been run.** All numbers in "Expected results" are
 predictions with stated reasoning, not measurements.
 
+> **The LoCoMo harness described in Phase 1 is now implemented** — see
+> [BENCHMARK_README.md](BENCHMARK_README.md) for how to run it, and `benchmarks/`.
+>
+> Two figures in Part 3 below are superseded by that document, which targets a specific
+> 32-core Xeon Gold 6530 rather than a generic box:
+> - LoCoMo wall clock is **~40 min – 1 h**, not the 3–6 h estimated here. That figure
+>   assumed modest parallelism; with all 10 conversations running concurrently the ingest
+>   phase fully overlaps and API throughput becomes the only limit.
+> - Cost is **$7–9**, at the low end of the $5–30 range, and barely moves with escalation
+>   rate — the reader's 3k-token context dominates the token bill, not extraction.
+>
+> The Groq **free tier cannot run LoCoMo at all**: ~8,000 calls against a ~1,000
+> requests/day cap is a hard floor of ~8 days, and a daily cap cannot be parallelised
+> around. This was not anticipated below and is the single practical blocker.
+
 ---
 
 ## Part 1: What benchmark is Memora currently built to demonstrate?

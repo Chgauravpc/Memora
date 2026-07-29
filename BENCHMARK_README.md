@@ -1,0 +1,223 @@
+# Running the LoCoMo benchmark on the server
+
+Companion to [BENCHMARK_PLAN.md](BENCHMARK_PLAN.md), which explains *why* LoCoMo and what
+to expect. This file is the operator's guide.
+
+Target: `/home/kenton/projects/memora` on the Xeon Gold 6530 box. Everything the benchmark
+reads or writes stays inside that directory — see [Containment](#containment).
+
+---
+
+## Copying the repo across
+
+```bash
+# from the Windows machine, or however you prefer to move it
+rsync -av --exclude '.venv' --exclude '.git' --exclude 'memory' \
+      --exclude '__pycache__' --exclude 'data' \
+      Memora/ kenton@server:/home/kenton/projects/memora/
+```
+
+**Exclude `.venv/`.** The repo ships a Windows virtualenv (`.venv/Scripts/`) that cannot
+work on Linux. `setup_server.sh` builds a separate `.venv-linux/` so both can coexist if
+you copy it anyway.
+
+## Setup
+
+```bash
+cd /home/kenton/projects/memora
+bash scripts/setup_server.sh
+source .venv-linux/bin/activate
+
+# add GROQ_API_KEY to .env, then:
+python -m benchmarks.preflight
+```
+
+`setup_server.sh` creates the venv, installs deps (CPU-only torch), starts Redis + Qdrant
+via `docker-compose.benchmark.yml`, downloads `locomo10.json`, and runs preflight.
+
+Preflight is not a formality. It checks the one failure mode that silently invalidates
+results: **if Qdrant is unreachable, Memora degrades to Phase 1 retrieval without erroring**
+(the optional-dependency `try/except` in `src/__init__.py` and `memory_system.py` just logs
+a warning). The run would finish and produce plausible, meaningless numbers. Preflight fails
+loudly instead, and `report.py` flags any conversation whose health check shows the vector
+store down.
+
+## Running
+
+```bash
+# 1. Verify the dataset parses and the category mapping matches expectations
+python -m benchmarks.dataset --inspect
+
+# 2. Project cost and wall clock for your provider tier
+python -m benchmarks.estimate --workers 10 --escalation 0.7 --rpm 1000 --tpm 300000
+
+# 3. SMOKE TEST FIRST — one conversation, 20 questions
+python run_locomo.py --limit 1 --max-questions 20 --workers 1
+python -m benchmarks.report
+
+# 4. Full run
+python run_locomo.py --workers 10
+python -m benchmarks.report
+```
+
+**Do the smoke test.** It measures the real Stage 3 escalation rate, which is the dominant
+cost and time variable and is genuinely unknown until you look. `RESULTS_FEBRUARY_2026.md`
+records 13.3% in-domain but ~100% on out-of-domain text before patterns were hand-added for
+that domain. LoCoMo is out-of-domain. Feed the measured rate back into `estimate.py` before
+committing to the full run.
+
+Runs are **resumable** — conversations already in `results/locomo/raw/` are skipped, so
+Ctrl-C and restart is safe. `--force` re-runs them.
+
+## Time and cost on this box
+
+Derived from the repo's own measured numbers (575 ms/turn processing, 294 ms retrieval,
+`RESULTS_FEBRUARY_2026.md:395-412`) for ~6,000 turns and ~1,986 questions.
+
+| Provider tier | Wall clock | Binding limit |
+|---|---|---|
+| Groq free (30 RPM / 12k TPM / 1k RPD) | **~8 days** | requests **per day** |
+| Groq paid (1k RPM / 300k TPM) | **~40 min – 1 h** | tokens/min |
+| Paid, 100% escalation (worst case) | **~50 min** | tokens/min |
+
+Cost is **$7–9** on `groq/llama-3.3-70b` for the whole run — escalation rate barely moves it
+because the reader's 3k-token context dominates the token bill, not extraction.
+
+**The free tier cannot run this.** 8,172 calls against a ~1,000 requests/day cap is a
+hard floor of ~8 days, and a daily cap cannot be parallelised around. This is the one thing
+that will actually block you.
+
+### The Xeon is not the bottleneck
+
+32 cores / 64 threads is heavily over-provisioned for this workload, for two reasons:
+
+1. **Non-LLM work is ~90 ms/turn.** Embedding (MiniLM, 384-dim), Redis writes, Qdrant
+   upserts, and consolidation are a rounding error next to a ~1.2 s LLM round trip. At 10
+   workers you will see well under 5% CPU utilisation.
+2. **LoCoMo has only 10 conversations, so parallelism caps at 10.** Isolation is
+   per-conversation (see below), so an 11th worker has nothing to do. `--workers 10` is the
+   ceiling for this benchmark regardless of core count.
+
+What actually governs wall clock is **API throughput**. The highest-leverage change is a
+higher provider tier or additional Groq accounts — note Groq rate limits are per *account*,
+so extra keys on one account do nothing (`GROQ_API_KEYS` rotation only helps across
+accounts).
+
+Constraint to watch: **RAM, not CPU.** Each worker loads its own sentence-transformers model
+plus torch, ~0.8–1.2 GB, so 10 workers want ~10–12 GB. Check free memory before raising
+`--workers`.
+
+This revises the 3–6 h estimate in BENCHMARK_PLAN.md down to well under an hour, because
+that figure assumed modest parallelism; with all 10 conversations running concurrently the
+ingest phase fully overlaps and the API becomes the only limit.
+
+## Containment
+
+Three things default to outside the repo and are redirected:
+
+| What | Default | Redirected to |
+|---|---|---|
+| HuggingFace / sentence-transformers cache | `~/.cache/huggingface` | `.cache/huggingface/` |
+| Redis data | Docker named volume in `/var/lib/docker/volumes` | `data/redis/` |
+| Qdrant data | Docker named volume | `data/qdrant/` |
+
+The model cache is handled by `benchmarks.paths.redirect_caches_into_repo()`, called before
+any transformers import (those libraries read the env vars at import time, so ordering
+matters). Volumes are bind mounts in `docker-compose.benchmark.yml`.
+`benchmarks.paths.assert_contained()` refuses any read/write that resolves outside the repo.
+
+`docker-compose.benchmark.yml` also uses distinct container names (`memora-bench-*`) and
+`${REDIS_PORT:-6379}` / `${QDRANT_PORT:-6333}`, so it will not collide with anything already
+running on a shared server. Change the ports in `.env` if 6379/6333 are taken — `src/config.py`
+reads the same variables, so the two stay in sync.
+
+## Worker isolation — why subprocesses
+
+**Memora's Redis keys are global.** `mem:`, `type:`, `dedup:`, and `recent_memories` carry
+no user namespace; `count_memories()` counts everything; `clear_memories()` wipes every
+user *and* drops the entire Qdrant collection. Two conversations sharing one backend
+cross-contaminate, so each worker slot gets:
+
+- its own Redis logical DB — `REDIS_DB=<slot>`
+- its own Qdrant collection — `QDRANT_COLLECTION=locomo_w<slot>`
+- its own flat-file dir — `user_id=locomo_<sample_id>`, wiped before each conversation
+  (Phase 4 promotion writes core-memory files that are *always* injected verbatim, so
+  leftovers would leak one person's memory into another's evaluation)
+
+`src/config.py` freezes `REDIS_DB` and `QDRANT_COLLECTION` into module constants at import
+time, so isolation is only achievable by setting the environment **before** `src` is
+imported. That is why each worker is a subprocess and not a thread — a thread pool would
+silently share DB 0. `redis.benchmark.conf` sets `databases 64` (default 16) to leave
+headroom.
+
+## Output
+
+```
+results/locomo/raw/<sample_id>.json   per-conversation records + operational stats
+results/locomo/scorecard.json         aggregated
+results/locomo/scorecard.txt          same, human-readable
+logs/worker_<sample_id>.log           per-worker log
+```
+
+The scorecard reports **per category**, because the predicted failure profile is bimodal —
+decent single-hop recall, poor temporal and multi-hop — and an aggregate hides exactly that.
+It separates *graded* from *ungraded* questions so a failed judge call cannot be silently
+counted as either correct or incorrect, and reports Stage 3 escalation, sec/turn, and store
+size so a larger run can be costed from measurements.
+
+Metrics: **LLM-as-judge is primary** (that is what published Mem0/Zep LoCoMo numbers use, and
+comparability is the point of choosing LoCoMo). Token-F1 and exact-match are computed as
+deterministic secondaries — if they diverge sharply from the judge, audit the judge first.
+
+## Changes made to `src/` for this
+
+Two, both minimal and disclosed because they alter the system under test:
+
+1. **`src/llm_extractor.py` — Stage 3 retry/backoff.** The attempt count was
+   `len(clients)`, so a single-key deployment made exactly **one** attempt with no backoff
+   and any transient 429 propagated. Survivable for a demo, fatal for a run making tens of
+   thousands of calls. Now floored at `STAGE_3_MAX_ATTEMPTS` (6) with exponential backoff,
+   jitter, and respect for the provider's `try again in Xs` hint. Key rotation is retained
+   and still tried first. This changes resilience, not extraction quality.
+2. **`src/config.py`** — the three knobs for the above
+   (`STAGE_3_MAX_ATTEMPTS`, `STAGE_3_BACKOFF_BASE`, `STAGE_3_BACKOFF_MAX`), env-overridable
+   per the repo convention that config is the single source of truth.
+
+Nothing else in `src/` is touched. The benchmark reads Memora through its public API only.
+
+## Known limitations
+
+Carried over from BENCHMARK_PLAN.md; these bound how much the resulting number means.
+
+- **Assistant turns are ingested as user turns.** `process_turn(user_message)` has no role
+  parameter, so both speakers go through the same path with the speaker name prefixed into
+  the text. LoCoMo evidence lives in both speakers' turns, so ingesting one side would
+  discard about half of it — but prefixing is a workaround, not attribution.
+- **Session dates are prefixed into the message text, not stored as metadata.** Memora
+  stamps `timestamp` at ingest time and `process_turn` takes no timestamp argument, so
+  `[8 May, 2023]` rides along in the text and reaches the embedding and `source_text` but
+  never becomes a queryable field. Expect temporal questions to score poorly for this
+  reason as much as any retrieval weakness. `--no-dates` ablates it. Fixing it properly is
+  the four-place change described in `CLAUDE.md`.
+- **Images are reduced to their `blip_caption`.** LoCoMo is multi-modal; Memora is
+  text-only. Any QA pair depending on image content beyond the caption is unanswerable in
+  principle.
+- **Retrieval uses the question as the query** via `get_prompt_context`, which retrieves
+  without extracting, so grading does not write the questions into the store. (Note the
+  in-repo `evaluation/` harness uses `process_turn` for its query, which does pollute.)
+- **Access counts are double-incremented per retrieval** (`retriever` and
+  `_compose_prompt_context`), inflating the frequency signal. Weighted 0.05, so the effect
+  is small; left alone rather than papered over.
+- **`MEMORY_DECAY_ENABLED = False`**, so the decay path is untested and no decay result
+  should be reported.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `redis logical DBs: 16 but N workers` | Using stock `redis.conf`. Start with `docker-compose.benchmark.yml`, which mounts `redis.benchmark.conf` (`databases 64`). |
+| Escalation rate ~100% | Expected off-domain. Stage 2 regexes were tuned on personal-assistant and payment phrasing. Cost impact is modest; recall impact is real. |
+| `vector store was DOWN` in scorecard | Qdrant was unreachable and those conversations ran Phase 1 only. Re-run them; do not quote the number. |
+| Model download fails | First run needs internet for MiniLM. Pre-seed `.cache/huggingface/` from another machine. |
+| Workers OOM | ~1 GB each. Lower `--workers`. |
+| All questions score 0 on adversarial | Check the loader is resolving `adversarial_answer`; category 5 has no `answer` key. |

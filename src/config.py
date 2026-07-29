@@ -148,6 +148,15 @@ STAGE_3_CONFIDENCE_THRESHOLD = 0.7  # Escalate to LLM if Stage 2 < this
 STAGE_3_MAX_TOKENS = 500  # Max tokens for LLM extraction response (increased to prevent JSON cutoffs)
 STAGE_3_TEMPERATURE = 0.1  # Low temperature for consistent extraction
 
+# Stage 3 retry policy (rate limits / transient upstream errors).
+# Attempts are floored at STAGE_3_MAX_ATTEMPTS regardless of how many API keys are
+# configured. Before this existed, the attempt count was len(api_keys), so a single-key
+# deployment made ONE attempt with no backoff and any transient 429 propagated -- fine for
+# a demo, fatal for a batch run making tens of thousands of calls.
+STAGE_3_MAX_ATTEMPTS = int(os.getenv("STAGE_3_MAX_ATTEMPTS", "6"))
+STAGE_3_BACKOFF_BASE = float(os.getenv("STAGE_3_BACKOFF_BASE", "1.0"))  # seconds
+STAGE_3_BACKOFF_MAX = float(os.getenv("STAGE_3_BACKOFF_MAX", "60.0"))  # seconds
+
 # Phase 3: Semantic Deduplication Configuration
 SEMANTIC_DEDUP_ENABLED = True  # Enable/disable semantic deduplication
 SEMANTIC_DEDUP_THRESHOLD = 0.92  # Similarity score to consider duplicate

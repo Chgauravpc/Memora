@@ -1,0 +1,50 @@
+# Benchmark backends, fully contained inside the repository directory.
+#
+# Differs from docker-compose.yml in three ways that matter on a shared server:
+#
+#   1. BIND MOUNTS instead of named volumes. The stock file uses `redis_data:` /
+#      `qdrant_data:`, which Docker stores under /var/lib/docker/volumes -- outside
+#      /home/kenton/projects/memora. Here the data lives in ./data/redis and
+#      ./data/qdrant.
+#   2. CONFIGURABLE PORTS via ${...:-default}, so a Redis or Qdrant already running on
+#      the box does not collide.
+#   3. DISTINCT CONTAINER NAMES (memora-bench-*) so this stack cannot be confused with,
+#      or clobber, the stock one.
+#
+# Usage:
+#   docker compose -f docker-compose.benchmark.yml up -d
+#   docker compose -f docker-compose.benchmark.yml down
+#
+# To run on non-default ports, set REDIS_PORT / QDRANT_PORT in .env (both this file and
+# src/config.py read them, so they stay in sync).
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: memora-bench-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./data/redis:/data
+      - ./redis.benchmark.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: memora-bench-qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      # One collection per worker; keep them all resident.
+      - QDRANT__STORAGE__OPTIMIZERS__DEFAULT_SEGMENT_NUMBER=2
+    restart: unless-stopped
