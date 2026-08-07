@@ -208,7 +208,12 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="re-run already-completed conversations")
     ap.add_argument("--no-adversarial", action="store_true")
     ap.add_argument("--no-dates", action="store_true")
-    ap.add_argument("--max-questions", type=int, default=None)
+    ap.add_argument("--max-questions", type=int, default=None,
+                    help="Sample this many questions per conversation, spread across "
+                         "categories (not the first N)")
+    ap.add_argument("--save-context", action="store_true",
+                    help="Record the retrieved memory context per question, for "
+                         "diagnosing low scores")
     args = ap.parse_args()
 
     extra: List[str] = []
@@ -218,6 +223,8 @@ def main() -> int:
         extra.append("--no-dates")
     if args.max_questions:
         extra += ["--max-questions", str(args.max_questions)]
+    if args.save_context:
+        extra.append("--save-context")
 
     return run(workers=args.workers, limit=args.limit, only=args.only,
                force=args.force, extra_args=extra)

@@ -88,6 +88,44 @@ def _reset_user_dir(user_id: str) -> None:
         shutil.rmtree(user_dir, ignore_errors=True)
 
 
+def _stratified_sample(questions: List[Question], limit: int) -> List[Question]:
+    """Take `limit` questions spread across categories, not the first `limit`.
+
+    LoCoMo's question list is grouped, so a plain head-slice is badly unrepresentative:
+    `--max-questions 20` on conversation 1 yields only multi-hop, temporal and open-domain
+    -- it never reaches single-hop (the easiest category) or adversarial. A smoke test on
+    that slice reports a score far below what the full run would give, and the difference
+    is sampling, not the system.
+
+    Round-robin across categories preserves category coverage at any limit.
+    """
+    if limit >= len(questions):
+        return questions
+
+    by_cat: Dict[int, List[Question]] = {}
+    for q in questions:
+        by_cat.setdefault(q.category, []).append(q)
+
+    picked: List[Question] = []
+    # Sorted for determinism: the same --max-questions must select the same questions on
+    # every run, or resumed/repeated runs would not be comparable.
+    cats = sorted(by_cat)
+    idx = 0
+    while len(picked) < limit:
+        progressed = False
+        for c in cats:
+            bucket = by_cat[c]
+            if idx < len(bucket):
+                picked.append(bucket[idx])
+                progressed = True
+                if len(picked) >= limit:
+                    break
+        if not progressed:
+            break
+        idx += 1
+    return picked
+
+
 def run_conversation(
     conv: Conversation,
     out_path: Path,
@@ -95,6 +133,7 @@ def run_conversation(
     max_questions: Optional[int] = None,
     include_dates: bool = True,
     progress_every: int = 100,
+    save_context: bool = False,
 ) -> Dict[str, Any]:
     from src import MemorySystem
 
@@ -144,7 +183,7 @@ def run_conversation(
     if not include_adversarial:
         questions = [q for q in questions if q.category != 5]
     if max_questions:
-        questions = questions[:max_questions]
+        questions = _stratified_sample(questions, max_questions)
 
     records: List[Dict[str, Any]] = []
     qa_start = time.time()
@@ -179,6 +218,14 @@ def run_conversation(
             "retrieved_count": len(active),
             "context_chars": len(context or ""),
         })
+
+        if save_context:
+            # The single most useful diagnostic when the score is low: it distinguishes
+            # "retrieval never surfaced the fact" from "retrieval surfaced it and the
+            # reader still abstained". Those have opposite fixes, and the aggregate
+            # scorecard cannot tell them apart. Off by default -- on a full run this adds
+            # ~3 kB per question.
+            records[-1]["context"] = context or ""
 
         if progress_every and j % max(progress_every // 4, 1) == 0:
             logger.info("[%s] answered %d/%d questions", conv.sample_id, j, len(questions))
@@ -233,7 +280,10 @@ def main() -> int:
     ap.add_argument("--no-adversarial", action="store_true")
     ap.add_argument("--no-dates", action="store_true",
                     help="Do not prefix session dates onto turns (ablation)")
-    ap.add_argument("--max-questions", type=int, default=None)
+    ap.add_argument("--max-questions", type=int, default=None,
+                    help="Sample this many questions, spread across categories")
+    ap.add_argument("--save-context", action="store_true",
+                    help="Record the retrieved memory context per question (diagnosis)")
     ap.add_argument("--log-level", default=os.getenv("LOG_LEVEL", "INFO"))
     args = ap.parse_args()
 
@@ -255,6 +305,7 @@ def main() -> int:
         include_adversarial=not args.no_adversarial,
         max_questions=args.max_questions,
         include_dates=not args.no_dates,
+        save_context=args.save_context,
     )
     ing = payload["ingest"]
     print(f"[{args.sample_id}] {ing['turns']} turns in {ing['seconds']}s "

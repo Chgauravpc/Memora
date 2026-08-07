@@ -78,9 +78,10 @@ python -m benchmarks.dataset --inspect
 # 2. Project cost and wall clock for your provider tier
 python -m benchmarks.estimate --workers 10 --escalation 0.7 --rpm 1000 --tpm 300000
 
-# 3. SMOKE TEST FIRST — one conversation, 20 questions
-python run_locomo.py --limit 1 --max-questions 20 --workers 1
+# 3. SMOKE TEST FIRST — one conversation, 25 questions across all 5 categories
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --save-context
 python -m benchmarks.report
+python -m benchmarks.diagnose        # why did the wrong ones go wrong?
 
 # 4. Full run
 python run_locomo.py --workers 10
@@ -92,6 +93,18 @@ cost and time variable and is genuinely unknown until you look. `RESULTS_FEBRUAR
 records 13.3% in-domain but ~100% on out-of-domain text before patterns were hand-added for
 that domain. LoCoMo is out-of-domain. Feed the measured rate back into `estimate.py` before
 committing to the full run.
+
+`--max-questions` takes a **stratified** sample — round-robin across the five categories,
+not the first N. This matters: LoCoMo's question list is grouped, so a head-slice of 20 on
+conversation 1 returns only multi-hop, temporal and open-domain and never reaches
+single-hop (the easiest category) or adversarial. A smoke test on that slice scores far
+below what the full run gives, and the gap is sampling, not the system.
+
+`--save-context` records the retrieved memory context per question so
+`benchmarks.diagnose` can separate **retrieval misses** (the fact never reached the reader)
+from **reader misses** (it did, and the answer step failed anyway). Those have opposite
+fixes and identical-looking abstention rates. Leave it off for full runs — it adds ~3 kB
+per question.
 
 Runs are **resumable** — conversations already in `results/locomo/raw/` are skipped, so
 Ctrl-C and restart is safe. `--force` re-runs them.
