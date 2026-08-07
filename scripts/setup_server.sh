@@ -106,45 +106,19 @@ fi
 
 # ------------------------------------------------------------------ 6. backends
 echo
-echo "--- docker backends ---"
-COMPOSE=""
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE="docker compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE="docker-compose"
-fi
-
-if [[ -z "$COMPOSE" ]]; then
-  echo "docker compose not found. Start Redis and Qdrant yourself, e.g.:"
-  echo "  redis-server --port 6379 --databases 64 --appendonly no"
-  echo "  qdrant  # listening on 6333"
-else
-  $COMPOSE -f docker-compose.benchmark.yml up -d
-  echo "waiting for backends"
-  for _ in $(seq 1 30); do
-    if python - <<'PY' 2>/dev/null
-import sys
-import redis
-from qdrant_client import QdrantClient
-import os
-from dotenv import load_dotenv
-load_dotenv()
-try:
-    redis.Redis(host=os.getenv("REDIS_HOST", "localhost"),
-                port=int(os.getenv("REDIS_PORT", "6379")),
-                socket_connect_timeout=2).ping()
-    QdrantClient(host=os.getenv("QDRANT_HOST", "localhost"),
-                 port=int(os.getenv("QDRANT_PORT", "6333")), timeout=2).get_collections()
-except Exception:
-    sys.exit(1)
-PY
-    then
-      echo "backends up"
-      break
-    fi
-    sleep 2
-  done
-fi
+echo "--- backends (redis + qdrant) ---"
+# Delegated to start_backends.sh, which uses docker when it is actually usable and
+# otherwise runs both services as plain user processes. The distinction matters on shared
+# nodes: docker is frequently installed but unusable (daemon down, or the user is not in
+# the `docker` group), and a missing Qdrant does not stop Memora -- it degrades silently
+# to Phase 1 retrieval and produces numbers that look fine and mean nothing.
+bash scripts/start_backends.sh start || {
+  echo
+  echo "WARNING: backends did not come up. The benchmark CANNOT produce valid numbers"
+  echo "without Qdrant. Investigate before running:"
+  echo "    bash scripts/start_backends.sh status"
+  echo "    tail -40 logs/redis.log logs/qdrant.log"
+}
 
 # ------------------------------------------------------------------ 7. dataset
 echo
@@ -162,6 +136,10 @@ cat <<EOF
 Next steps
 ======================================================================
   source $VENV/bin/activate
+
+  # 0. if redis/qdrant are down, start them (docker if usable, else user processes)
+  bash scripts/start_backends.sh status
+  bash scripts/start_backends.sh start
 
   # 1. add GROQ_API_KEY to .env, then re-check
   python -m benchmarks.preflight

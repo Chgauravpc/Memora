@@ -32,8 +32,35 @@ source .venv-linux/bin/activate
 python -m benchmarks.preflight
 ```
 
-`setup_server.sh` creates the venv, installs deps (CPU-only torch), starts Redis + Qdrant
-via `docker-compose.benchmark.yml`, downloads `locomo10.json`, and runs preflight.
+`setup_server.sh` creates the venv, installs deps (CPU-only torch), starts Redis + Qdrant,
+downloads `locomo10.json`, and runs preflight.
+
+### Backends without Docker
+
+Backends are started by `scripts/start_backends.sh`, which uses `docker compose` when it is
+actually usable and otherwise runs both services as ordinary user processes — **no root, no
+container runtime**. That fallback exists because on shared nodes Docker is often installed
+but unusable (daemon down, or the user is not in the `docker` group), and the resulting
+
+```
+[ FAIL ] qdrant reachable - [Errno 111] Connection refused
+```
+
+is not a cosmetic failure: without Qdrant the benchmark still runs and still emits numbers,
+just meaningless ones.
+
+```bash
+bash scripts/start_backends.sh          # start (auto-detects docker vs native)
+bash scripts/start_backends.sh status
+bash scripts/start_backends.sh stop
+BACKEND_MODE=native bash scripts/start_backends.sh   # force native
+```
+
+The native path downloads Qdrant's static binary into `.cache/bin/` and uses any
+`redis-server` on `PATH`, building one into `.cache/redis-stable/` only if none exists. It
+loads the same `redis.benchmark.conf` as the Docker path, so `databases 64` still applies —
+without it the runner cannot give each worker its own logical DB and parallelism silently
+caps at 16. Ports come from `.env`, state from `data/`, logs from `logs/`.
 
 Preflight is not a formality. It checks the one failure mode that silently invalidates
 results: **if Qdrant is unreachable, Memora degrades to Phase 1 retrieval without erroring**
@@ -535,7 +562,8 @@ Carried over from BENCHMARK_PLAN.md; these bound how much the resulting number m
 
 | Symptom | Cause |
 |---|---|
-| `redis logical DBs: 16 but N workers` | Using stock `redis.conf`. Start with `docker-compose.benchmark.yml`, which mounts `redis.benchmark.conf` (`databases 64`). |
+| `redis logical DBs: 16 but N workers` | Using stock `redis.conf`. Start via `scripts/start_backends.sh`, which applies `redis.benchmark.conf` (`databases 64`) on both the Docker and native paths. |
+| `Error 111 connecting to localhost:6379` / qdrant refused | Backends not running. `bash scripts/start_backends.sh start`, then `status`. If Docker is installed but unusable, the script falls back to user processes automatically; `docker info` failing is the tell. |
 | Escalation rate ~100% | Expected off-domain. Stage 2 regexes were tuned on personal-assistant and payment phrasing. Cost impact is modest; recall impact is real. |
 | `vector store was DOWN` in scorecard | Qdrant was unreachable and those conversations ran Phase 1 only. Re-run them; do not quote the number. |
 | Model download fails | First run needs internet for MiniLM. Pre-seed `.cache/huggingface/` from another machine. |
