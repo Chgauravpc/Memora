@@ -133,20 +133,47 @@ LLM_EXTRACTION_MODEL = os.getenv("LLM_EXTRACTION_MODEL", "llama-3.3-70b-versatil
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-# Support multiple Groq API keys for rate limit rotation
-GROQ_API_KEYS = [
-    key for key in [
-        os.getenv("GROQ_API_KEY"),
-        os.getenv("GROQ_API_KEY_1"),
-        os.getenv("GROQ_API_KEY_2"),
-        os.getenv("GROQ_API_KEY_3"),
-    ] if key is not None
-]
+# Support multiple Groq API keys for rate limit rotation.
+#
+# Groq enforces rate limits at the ORGANIZATION level, not per key, so extra keys from the
+# same account share one quota and buy nothing. Keys from separate accounts each carry
+# their own quota -- that is the only way more keys increase throughput.
+#
+# Scanned dynamically (GROQ_API_KEY, then GROQ_API_KEY_1..N until a gap) instead of the
+# previous hardcoded 4 slots, which silently ignored any key past GROQ_API_KEY_3.
+def _collect_groq_keys(max_keys: int = 64) -> list:
+    keys, seen = [], set()
+    candidates = [os.getenv("GROQ_API_KEY")]
+    for i in range(1, max_keys + 1):
+        candidates.append(os.getenv(f"GROQ_API_KEY_{i}"))
+    for key in candidates:
+        if not key:
+            continue
+        key = key.strip()
+        # Skip the placeholder shipped in .env.example so a half-filled .env fails loudly
+        # at "no key configured" rather than obscurely at "401 invalid api key".
+        if not key or key.startswith("gsk-your") or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys
+
+
+GROQ_API_KEYS = _collect_groq_keys()
 GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else None  # Backward compatibility
 
 STAGE_3_CONFIDENCE_THRESHOLD = 0.7  # Escalate to LLM if Stage 2 < this
 STAGE_3_MAX_TOKENS = 500  # Max tokens for LLM extraction response (increased to prevent JSON cutoffs)
 STAGE_3_TEMPERATURE = 0.1  # Low temperature for consistent extraction
+
+# Stage 3 retry policy (rate limits / transient upstream errors).
+# Attempts are floored at STAGE_3_MAX_ATTEMPTS regardless of how many API keys are
+# configured. Before this existed, the attempt count was len(api_keys), so a single-key
+# deployment made ONE attempt with no backoff and any transient 429 propagated -- fine for
+# a demo, fatal for a batch run making tens of thousands of calls.
+STAGE_3_MAX_ATTEMPTS = int(os.getenv("STAGE_3_MAX_ATTEMPTS", "6"))
+STAGE_3_BACKOFF_BASE = float(os.getenv("STAGE_3_BACKOFF_BASE", "1.0"))  # seconds
+STAGE_3_BACKOFF_MAX = float(os.getenv("STAGE_3_BACKOFF_MAX", "60.0"))  # seconds
 
 # Phase 3: Semantic Deduplication Configuration
 SEMANTIC_DEDUP_ENABLED = True  # Enable/disable semantic deduplication
