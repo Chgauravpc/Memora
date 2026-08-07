@@ -134,27 +134,58 @@ def run_conversation(
     include_dates: bool = True,
     progress_every: int = 100,
     save_context: bool = False,
+    reuse_store: bool = False,
+    max_turns: Optional[int] = None,
 ) -> Dict[str, Any]:
     from src import MemorySystem
 
     user_id = f"locomo_{conv.sample_id}"
-    _reset_user_dir(user_id)
 
     system = MemorySystem(user_id=user_id)
     health = system.health_check()
-
-    # Isolation is per Redis DB + per Qdrant collection, so this clears only our slice.
-    system.clear_memories()
 
     counter = Stage3Counter()
     instrumented = counter.attach(system)
 
     # ------------------------------------------------------------- ingest
-    ingest_start = time.time()
-    turn_errors = 0
-    extracted_total = 0
+    #
+    # Ingest is the expensive half (419 turns at ~0.76 s/turn, dominated by Stage 3 LLM
+    # calls at ~80% escalation). When iterating on the READER or on diagnosis, re-ingesting
+    # is pure waste: the store already holds the memories and nothing about ingest changed.
+    # --reuse-store skips straight to QA, turning a ~6 minute loop into seconds.
+    #
+    # Only safe because each worker owns its own Redis DB and Qdrant collection, so the
+    # store found here is necessarily this conversation's. It is opt-in because a stale
+    # store silently measures the wrong thing -- if extraction or ingest changed, the
+    # numbers would describe the previous code.
+    existing = 0
+    if reuse_store:
+        try:
+            existing = system.redis_store.count_memories()
+        except Exception:  # noqa: BLE001
+            existing = 0
 
-    for i, turn in enumerate(conv.turns, 1):
+    turns = conv.turns if max_turns is None else conv.turns[:max_turns]
+
+    if reuse_store and existing > 0:
+        print(f"[{conv.sample_id}] reusing existing store: {existing} memories, "
+              f"skipping ingest of {len(turns)} turns", flush=True)
+        ingest_start = time.time()
+        turn_errors = 0
+        extracted_total = 0
+        turns = []
+    else:
+        if reuse_store:
+            print(f"[{conv.sample_id}] --reuse-store requested but the store is empty; "
+                  f"ingesting normally", flush=True)
+        _reset_user_dir(user_id)
+        # Isolation is per Redis DB + per Qdrant collection, so this clears only our slice.
+        system.clear_memories()
+        ingest_start = time.time()
+        turn_errors = 0
+        extracted_total = 0
+
+    for i, turn in enumerate(turns, 1):
         try:
             _, stats = system.process_turn(turn.render(include_date=include_dates))
             extracted_total += int(stats.get("extracted_count", 0) or 0)
@@ -163,8 +194,16 @@ def run_conversation(
             logger.warning("[%s] turn %d failed: %s", conv.sample_id, i, exc)
         if progress_every and i % progress_every == 0:
             rate = counter.calls / i if i else 0
-            logger.info("[%s] ingested %d/%d turns (stage3 %.0f%%)",
-                        conv.sample_id, i, len(conv.turns), rate * 100)
+            done = time.time() - ingest_start
+            eta = (done / i) * (len(turns) - i)
+            # print(), not logger.info(): .env sets LOG_LEVEL=WARNING for readable logs,
+            # which silences INFO progress entirely. The run then looks hung for minutes
+            # with no output at all -- worker stdout is redirected to logs/worker_*.log,
+            # so the terminal shows nothing either. Progress must not be log-level gated.
+            print(f"[{conv.sample_id}] ingest {i}/{len(turns)} turns "
+                  f"({i / len(turns):.0%})  stage3 {rate:.0%}  "
+                  f"{done / 60:.1f} min elapsed, ~{eta / 60:.1f} min left",
+                  flush=True)
 
     ingest_seconds = time.time() - ingest_start
     ingest_stage3_calls = counter.calls
@@ -227,8 +266,9 @@ def run_conversation(
             # ~3 kB per question.
             records[-1]["context"] = context or ""
 
-        if progress_every and j % max(progress_every // 4, 1) == 0:
-            logger.info("[%s] answered %d/%d questions", conv.sample_id, j, len(questions))
+        if progress_every and j % max(progress_every // 20, 1) == 0:
+            print(f"[{conv.sample_id}] QA {j}/{len(questions)} questions "
+                  f"({(time.time() - qa_start) / 60:.1f} min)", flush=True)
 
     qa_seconds = time.time() - qa_start
 
@@ -245,7 +285,12 @@ def run_conversation(
             "reader_provider": client.provider,
         },
         "ingest": {
-            "turns": len(conv.turns),
+            # Turns actually processed, not the conversation length: --max-turns and
+            # --reuse-store both make these differ, and reporting the full length would
+            # understate sec/turn and misstate the escalation denominator.
+            "turns": len(turns),
+            "turns_available": len(conv.turns),
+            "reused_store": bool(reuse_store and existing > 0),
             "sessions": conv.num_sessions,
             "seconds": round(ingest_seconds, 1),
             "seconds_per_turn": round(ingest_seconds / max(len(conv.turns), 1), 3),
@@ -284,6 +329,13 @@ def main() -> int:
                     help="Sample this many questions, spread across categories")
     ap.add_argument("--save-context", action="store_true",
                     help="Record the retrieved memory context per question (diagnosis)")
+    ap.add_argument("--reuse-store", action="store_true",
+                    help="Skip ingest if this worker's store already holds memories. "
+                         "For iterating on the reader/diagnosis without paying for "
+                         "re-extraction. Do NOT use after changing extraction.")
+    ap.add_argument("--max-turns", type=int, default=None,
+                    help="Ingest only the first N turns (faster smoke tests; note this "
+                         "makes later questions unanswerable, so scores drop)")
     ap.add_argument("--log-level", default=os.getenv("LOG_LEVEL", "INFO"))
     args = ap.parse_args()
 
@@ -306,6 +358,8 @@ def main() -> int:
         max_questions=args.max_questions,
         include_dates=not args.no_dates,
         save_context=args.save_context,
+        reuse_store=args.reuse_store,
+        max_turns=args.max_turns,
     )
     ing = payload["ingest"]
     print(f"[{args.sample_id}] {ing['turns']} turns in {ing['seconds']}s "

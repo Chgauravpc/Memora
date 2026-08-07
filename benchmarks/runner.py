@@ -36,6 +36,21 @@ from .dataset import load_conversations
 from .paths import LOG_DIR, RAW_DIR, REPO_ROOT, describe, ensure_dirs
 
 MAX_REDIS_DBS = int(os.getenv("BENCH_MAX_REDIS_DBS", "16"))
+HEARTBEAT_SECONDS = int(os.getenv("BENCH_HEARTBEAT_SECONDS", "30"))
+
+
+def _tail(path: Path, n: int) -> List[str]:
+    """Last n non-blank lines of a file, or [] if unreadable.
+
+    Workers write to their log continuously; this is only ever read for display, so any
+    error here must be swallowed rather than killing a run that is otherwise fine.
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            lines = [ln.rstrip() for ln in fh.readlines() if ln.strip()]
+        return lines[-n:]
+    except OSError:
+        return []
 
 
 class Slot:
@@ -161,6 +176,13 @@ def run(
     completed: Dict[str, int] = {}
     started_at = time.time()
 
+    # Worker stdout is redirected to logs/worker_<id>.log, so without this the terminal
+    # shows nothing between "-> launched" and "ok" -- minutes of apparent hang. The
+    # heartbeat echoes each worker's latest progress line so the run is visibly alive.
+    print(f"progress every {HEARTBEAT_SECONDS}s; full logs in {LOG_DIR}")
+    print()
+    last_beat = time.time()
+
     try:
         while queue or any(s.busy for s in slots):
             for slot in slots:
@@ -172,13 +194,31 @@ def run(
                         completed[sid] = code
                         status = "ok" if code == 0 else f"FAILED (exit {code})"
                         print(f"  [{len(completed)}/{len(pending)}] {sid}: {status} "
-                              f"in {elapsed / 60:.1f} min")
+                              f"in {elapsed / 60:.1f} min", flush=True)
+                        if code != 0:
+                            print(f"      last log lines from "
+                                  f"{LOG_DIR / f'worker_{sid}.log'}:")
+                            for ln in _tail(LOG_DIR / f"worker_{sid}.log", 5):
+                                print(f"      | {ln}")
                         slot.sample_id = None
                 elif queue:
                     sid = queue.pop(0)
                     slot.launch(sid, RAW_DIR / f"{sid}.json", extra_args)
                     print(f"  -> {sid} on slot {slot.index} "
-                          f"(db={slot.redis_db}, collection={slot.collection})")
+                          f"(db={slot.redis_db}, collection={slot.collection})", flush=True)
+
+            now = time.time()
+            if now - last_beat >= HEARTBEAT_SECONDS:
+                last_beat = now
+                busy = [s for s in slots if s.busy and s.sample_id]
+                if busy:
+                    print(f"  [{(now - started_at) / 60:5.1f} min] "
+                          f"{len(completed)}/{len(pending)} done, "
+                          f"{len(busy)} running", flush=True)
+                    for s in busy:
+                        tail = _tail(LOG_DIR / f"worker_{s.sample_id}.log", 1)
+                        if tail:
+                            print(f"      {s.sample_id}: {tail[-1][:110]}", flush=True)
             time.sleep(2)
     except KeyboardInterrupt:
         print("\ninterrupted; terminating workers (completed conversations are kept)")
@@ -214,6 +254,11 @@ def main() -> int:
     ap.add_argument("--save-context", action="store_true",
                     help="Record the retrieved memory context per question, for "
                          "diagnosing low scores")
+    ap.add_argument("--reuse-store", action="store_true",
+                    help="Skip ingest when the worker's store is already populated. "
+                         "Fast iteration on the reader; invalid after extraction changes")
+    ap.add_argument("--max-turns", type=int, default=None,
+                    help="Ingest only the first N turns per conversation")
     args = ap.parse_args()
 
     extra: List[str] = []
@@ -225,6 +270,10 @@ def main() -> int:
         extra += ["--max-questions", str(args.max_questions)]
     if args.save_context:
         extra.append("--save-context")
+    if args.reuse_store:
+        extra.append("--reuse-store")
+    if args.max_turns:
+        extra += ["--max-turns", str(args.max_turns)]
 
     return run(workers=args.workers, limit=args.limit, only=args.only,
                force=args.force, extra_args=extra)
