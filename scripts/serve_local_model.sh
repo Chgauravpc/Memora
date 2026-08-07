@@ -112,7 +112,7 @@ export OMP_PLACES=cores
 # One thread per physical core. Hyperthreading is OFF on this CPU so there are no siblings
 # to avoid, but oversubscribing past the node's 32 cores still costs throughput.
 #
-# --mlock pins weights in RAM: without it a 22 GB model can be partially paged out and
+# --mlock pins weights in RAM: without it a multi-GB model can be partially paged out and
 # decode (which touches weights every token) collapses.
 # --cont-batching is what makes concurrency pay -- weights are read once and reused across
 # all in-flight requests, so aggregate decode scales with slot count.

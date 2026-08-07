@@ -152,18 +152,34 @@ On 22 cores, batch 8, ~200 GB/s, AMX runtime — modelled, not measured:
 | llama-3.1-8b | 10 G | 217 | 1169 | 1.9 h | 3.8 h |
 | qwen2.5-14b | 14 G | 117 | 632 | 3.5 h | 7.1 h |
 | qwen3-30b-a3b | 24 G | 525 | 2833 | 0.8 h | 1.6 h |
-| **qwen3.6-35b-a3b** ★ | 26 G | **578** | **3117** | **0.7 h** | **1.4 h** |
+| **qwen3.6-35b-a3b (Q8_0)** ★ | 44 G | **315** | **3117** | **1.0 h** | **1.8 h** |
+| qwen3.6-35b-a3b (Q4) | 26 G | 578 | 3117 | 0.7 h | 1.4 h |
 | qwen3.6-27b (dense) | 21 G | 64 | 346 | 6.3 h | 12.9 h |
 | qwen2.5-32b | 25 G | 53 | 288 | 7.6 h | 15.5 h |
 | llama-3.3-70b | 48 G | 25 | 132 | 16.6 h | 33.6 h |
+
+The RAM column includes KV cache and runtime overhead, not just weights. Against the box's
+251 GB (189 GB free) every row is comfortable, which is exactly why the recommendation is
+Q8 rather than Q4 — see below.
 
 Without AMX (plain llama.cpp), multiply the prefill column by ~0.25 — `qwen3.6-35b-a3b`
 extraction becomes ~1.5 h and all-local ~4 h. Still fine, which is why AMX is a
 nice-to-have for the MoE and a necessity for anything dense.
 
-**Recommendation: `Qwen3.6-35B-A3B` at `UD-Q4_K_XL`.** Only ~3B of its 35B parameters are
-active per token, so it reads ~1.8 GB per token instead of ~21 GB: 35B-class extraction
-quality at *better than 8B* decode speed, in ~22 GB of RAM.
+**Recommendation: `Qwen3.6-35B-A3B` at `Q8_0`.** Only ~3B of its 35B parameters are active
+per token, so it reads ~3.3 GB per token instead of ~70 GB for a dense 35B: 35B-class
+extraction quality at *better than 8B* decode speed.
+
+**Q8 rather than Q4, because the target box has 251 GB of RAM.** Size is the only thing Q4
+buys that matters elsewhere, and here it buys nothing — ~39 GB versus ~22 GB is noise
+against 189 GB free. What Q4 costs is fidelity, and extraction fidelity feeds straight into
+the score. The speed difference is real but small in context: the table above puts Q8
+extraction at ~1.9 h against ~1.6 h for Q4. **Spending 18 minutes to remove quantisation as
+a confound in a published number is an easy trade.** Q4 (`UD-Q4_K_XL`, listed separately as
+`qwen3.6-35b-a3b-q4`) remains the right choice on a RAM-constrained box.
+
+If you want quantisation gone entirely, BF16 is ~70 GB and also fits — but it doubles
+bytes-per-token against Q8 for a difference from Q8_0 that is very hard to measure.
 
 Note the dense/MoE contrast in that table. `qwen3.6-27b` is *smaller* than
 `qwen3.6-35b-a3b` and needs *less* RAM, yet it is ~9× slower, because a dense model reads
@@ -184,9 +200,9 @@ whether AMX kernels are compiled in.
 
 | runtime | verdict |
 |---|---|
-| **llama.cpp, self-built with AMX** | **Use this.** GGUF Q4 keeps RAM at ~22 GB, native continuous batching, OpenAI-compatible `/v1`, best MoE support, full thread/NUMA control. |
+| **llama.cpp, self-built with AMX** | **Use this.** Native continuous batching, OpenAI-compatible `/v1`, best MoE support, full thread/NUMA control, and `Q8_0` maps cleanly onto AMX-INT8 tiles. |
 | `ik_llama.cpp` (fork) | Worth A/B testing — focused on CPU throughput and quantised MoE matmuls. Try if you want the last 20–30%. |
-| vLLM CPU backend | Best continuous batching at high concurrency and uses AMX via oneDNN — but it wants BF16/INT8, not GGUF, and 35B-A3B at BF16 is ~70 GB. Only if RAM is plentiful. |
+| vLLM CPU backend | Best continuous batching at high concurrency and uses AMX via oneDNN — but it wants BF16/INT8, not GGUF, and 35B-A3B at BF16 is ~70 GB. That *does* fit in this box's 251 GB, so it is a legitimate A/B if you want zero quantisation; expect ~half the decode speed of Q8. |
 | OpenVINO GenAI / Model Server | Intel's own stack, excellent AMX-INT8 prefill. More setup friction (model conversion). |
 | **Ollama** | **Avoid for throughput.** It wraps llama.cpp but ships generic prebuilt binaries that lack AMX for this CPU, and hides thread/NUMA/batch tuning. Community numbers show Ollama at 55–60 tok/s where raw llama.cpp with explicit flags hit 100+ on identical hardware. |
 | HuggingFace `transformers` | **Worst option.** Python generate loop, no continuous batching, no AMX kernels without IPEX. Fine for a one-off sanity check, not for ~6,000 calls. |
@@ -237,11 +253,15 @@ and is easily mistaken for model or engine weakness. Use official or Unsloth GGU
 **5. i-quants without an imatrix** degrade noticeably. Use imatrix-calibrated quants —
 Unsloth's `UD-*` are.
 
-**6. Q4 vs BF16 is a genuine fidelity loss.** This one is quantisation, not llama.cpp:
-vLLM at BF16 would be higher fidelity, at ~70 GB instead of ~22 GB for 35B-A3B. Reported
-comparisons put Q8 vs Q4_K_M as "hard to notice in conversation" — but *hard to notice in
-conversation* is not the same as *no effect on a benchmark*, which is the honest residual
-risk here.
+**6. Q4 vs BF16 is a genuine fidelity loss** — and this one is quantisation, not llama.cpp.
+Reported comparisons put Q8 vs Q4_K_M as "hard to notice in conversation", but *hard to
+notice in conversation* is not the same as *no effect on a benchmark*.
+
+**On the 251 GB target box this risk is simply bought off.** Q4 exists to fit models into
+RAM you do not have; with 189 GB free there is nothing to fit. Run `Q8_0` (~39 GB) and the
+concern shrinks to a rounding error, for ~18 minutes of extra extraction time. Only revisit
+Q4 if decode proves too slow in practice — and then measure the cost with
+`benchmarks.calibrate` rather than assuming it is negligible.
 
 **What I found no evidence for:** llama.cpp being inherently worse than vLLM at the *same*
 quantisation. The documented quality complaints trace to template misconfiguration and KV
@@ -275,17 +295,20 @@ is structured JSON with a low quality bar — the least fidelity-sensitive role 
 pipeline. Also remember `--no-dates` and similar ablations exist precisely so you can
 isolate this kind of variable.
 
-### Quantisation: test Q8_0 as well as Q4
+### Quantisation: default to Q8_0
 
-Counter-intuitive but worth measuring. **AMX natively supports only BF16 and INT8.**
-`Q8_0` maps almost directly onto AMX-INT8 tiles; `Q4_K_M` needs more per-block dequant work
-before the matmul. So Q8_0 can win on *prefill* despite reading twice the bytes — and
-prefill is 10.3M of the 11.3M tokens in this workload.
+**AMX natively supports only BF16 and INT8.** `Q8_0` maps almost directly onto AMX-INT8
+tiles; `Q4_K_M` needs more per-block dequant work before the matmul. So Q8_0 can win on
+*prefill* despite reading twice the bytes — and prefill is 10.3M of the 11.3M tokens in
+this workload.
 
-For a 3B-active MoE the decode cost is ~1.8 GB/token at Q4 vs ~3.2 GB at Q8, so decode gets
-slower while prefill gets faster. Given the prefill:decode ratio here, **benchmark both**
-rather than assuming Q4 is optimal. Unsloth's `UD-Q4_K_XL` dynamic quant is the best
-quality-per-byte 4-bit option if you stay at Q4.
+Decode moves the other way: ~1.8 GB/token at Q4 vs ~3.3 GB at Q8. Netted out over this
+prefill-heavy workload the estimator puts extraction at ~1.9 h (Q8) vs ~1.6 h (Q4).
+
+Given 251 GB of RAM, **Q8_0 is the default** — near-lossless, AMX-friendly, and it takes
+quantisation off the list of things you would otherwise have to caveat in a published
+number. Q4 is the fallback for a RAM-constrained box, and Unsloth's `UD-Q4_K_XL` dynamic
+quant is the best quality-per-byte 4-bit option there.
 
 ### Free speedups worth taking
 
@@ -293,7 +316,7 @@ quality-per-byte 4-bit option if you stay at Q4.
   software win after AMX. Weights are read once and reused across all in-flight requests,
   so aggregate decode scales with slot count. Match `--parallel` to the benchmark's
   `--workers`.
-- **`--mlock`** — pins weights in RAM. Without it a 22 GB model can be partially paged out
+- **`--mlock`** — pins weights in RAM. Without it a multi-GB model can be partially paged out
   and decode collapses, since every token touches weights.
 - **Large prefill batches** (`--batch-size 2048 --ubatch-size 512`) — longer matmuls give
   AMX more to chew on.
@@ -335,7 +358,7 @@ No code change needed — the OpenAI SDK reads `OPENAI_BASE_URL` from the enviro
 
 ```bash
 bash scripts/build_llama_cpp.sh && export PATH="$PWD/.cache/llama.cpp/build/bin:$PATH"
-scripts/serve_local_model.sh /path/to/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+scripts/serve_local_model.sh /path/to/Qwen3.6-35B-A3B-Q8_0.gguf \
   --chat-template-kwargs '{"enable_thinking":false}'
 
 # in .env

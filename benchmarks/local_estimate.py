@@ -78,8 +78,20 @@ class LocalModel:
         return self.active_b < self.total_b * 0.9
 
 
-# bytes_per_param 0.60 ~= Q4_K_M including quantisation overhead.
+# bytes_per_param, including quantisation overhead (block scales/mins, not just weights).
+#
+# CHOOSING BETWEEN THESE: the target box has 251 GB RAM, so model SIZE is not a constraint
+# and Q4's only advantage over Q8 is irrelevant here. What Q4 still buys is decode speed --
+# decode is memory-bandwidth bound, so halving bytes-per-param roughly doubles tok/s. What
+# it costs is fidelity, and extraction fidelity feeds straight into the benchmark score.
+#
+# Q8_0 is the default below because it is close enough to lossless that quantisation stops
+# being a confound worth disclosing, and it maps cleanly onto AMX-INT8 tiles. Pass
+# --bytes-per-param to compare, or use benchmarks.calibrate to measure the difference on
+# real LoCoMo turns rather than guessing.
 Q4 = 0.60
+Q8 = 1.10
+BF16 = 2.00
 MODELS: Dict[str, LocalModel] = {
     "llama-3.1-8b": LocalModel(
         "llama-3.1-8b", "Llama-3.1-8B-Instruct", 8.0, 8.0, Q4, "Q4_K_M",
@@ -94,10 +106,17 @@ MODELS: Dict[str, LocalModel] = {
         "qwen3-30b-a3b", "Qwen3-30B-A3B-Instruct (MoE)", 30.5, 3.3, Q4, "Q4_K_M",
         "Previous generation of the MoE line; superseded by qwen3.6-35b-a3b."),
     "qwen3.6-35b-a3b": LocalModel(
-        "qwen3.6-35b-a3b", "Qwen3.6-35B-A3B (MoE)", 35.0, 3.0, Q4, "UD-Q4_K_XL",
-        "RECOMMENDED. Current generation. ~3B active of 35B total, so ~1.8 GB is read "
-        "per token instead of ~21 GB -- 35B-class quality at better-than-8B decode "
-        "speed. ~22 GB at 4-bit. Disable thinking mode for extraction."),
+        "qwen3.6-35b-a3b", "Qwen3.6-35B-A3B (MoE)", 35.0, 3.0, Q8, "Q8_0",
+        "RECOMMENDED. Current generation. ~3B active of 35B total, so ~3.3 GB is read "
+        "per token at Q8 instead of ~70 GB for a dense 35B -- 35B-class quality at "
+        "better-than-8B decode speed. ~39 GB at Q8_0, trivial against 251 GB of RAM. "
+        "Q8 rather than Q4 precisely because RAM is abundant: it removes quantisation "
+        "as a confound in the score. Disable thinking mode for extraction."),
+    "qwen3.6-35b-a3b-q4": LocalModel(
+        "qwen3.6-35b-a3b-q4", "Qwen3.6-35B-A3B (MoE, 4-bit)", 35.0, 3.0, Q4, "UD-Q4_K_XL",
+        "Same model at Unsloth's dynamic 4-bit. ~22 GB, and roughly 2x the decode speed "
+        "of Q8 since decode is bandwidth bound. Worth it only if Q8 proves too slow -- "
+        "confirm the quality cost with benchmarks.calibrate before adopting."),
     "qwen3.6-27b": LocalModel(
         "qwen3.6-27b", "Qwen3.6-27B (dense)", 27.0, 27.0, Q4, "UD-Q4_K_XL",
         "Dense sibling of 35B-A3B; better MTP speculative-decode gains (1.4-2x vs "
