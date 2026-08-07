@@ -103,8 +103,11 @@ def check_redis() -> None:
                    f"{databases} DBs but {workers} workers requested - workers would "
                    f"share a DB and cross-contaminate. Raise `databases` in redis.conf.")
     except Exception as exc:  # noqa: BLE001
-        report(BAD, "redis reachable", f"{exc} - run: docker compose -f "
-                                       f"docker-compose.benchmark.yml up -d")
+        # Point at start_backends.sh, not docker directly: on a shared node docker is
+        # often installed but unusable, and that script falls back to running Redis and
+        # Qdrant as plain user processes.
+        report(BAD, "redis reachable",
+               f"{exc} - run: bash scripts/start_backends.sh start")
 
 
 def check_qdrant() -> None:
@@ -121,7 +124,8 @@ def check_qdrant() -> None:
         report(OK, "qdrant reachable", f"{QDRANT_HOST}:{QDRANT_PORT}")
     except Exception as exc:  # noqa: BLE001
         report(BAD, "qdrant reachable",
-               f"{exc} - WITHOUT Qdrant Memora silently degrades to Phase 1 retrieval "
+               f"{exc} - run: bash scripts/start_backends.sh start - "
+               f"WITHOUT Qdrant Memora silently degrades to Phase 1 retrieval "
                f"and the benchmark numbers become meaningless")
 
 
@@ -134,7 +138,12 @@ def check_embeddings() -> None:
         return
     try:
         model = SentenceTransformer(EMBEDDING_MODEL, cache_folder=str(HF_CACHE))
-        dim = model.get_sentence_embedding_dimension()
+        # sentence-transformers renamed this; prefer the new name, keep the old as a
+        # fallback so this works on both. (Memora itself never calls it -- preflight only
+        # reads the dimension to confirm it matches config.EMBEDDING_DIMENSION.)
+        getter = (getattr(model, "get_embedding_dimension", None)
+                  or model.get_sentence_embedding_dimension)
+        dim = getter()
         from src.config import EMBEDDING_DIMENSION
         if dim == EMBEDDING_DIMENSION:
             report(OK, "embedding model", f"{EMBEDDING_MODEL} ({dim}d)")
