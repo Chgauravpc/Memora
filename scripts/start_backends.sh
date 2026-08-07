@@ -112,39 +112,91 @@ docker_usable() {
 }
 
 # ------------------------------------------------------------------ native: qdrant
-ensure_qdrant_bin() {
-  if [[ -x "$BIN_DIR/qdrant" ]]; then
-    return 0
-  fi
-  echo "  downloading qdrant static binary"
-  command -v curl >/dev/null 2>&1 || { echo "ERROR: curl required" >&2; return 1; }
 
-  # Resolve the asset from the releases API rather than hardcoding a filename: Qdrant has
-  # changed its asset naming across releases, and a stale hardcoded URL fails as a 404
-  # that looks like a network problem.
-  local url=""
-  url="$(curl -fsS --max-time 20 \
-          https://api.github.com/repos/qdrant/qdrant/releases/latest 2>/dev/null \
-        | sed -n 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-        | grep -E 'x86_64-unknown-linux-(musl|gnu)\.tar\.gz$' \
-        | head -1 || true)"
-  if [[ -z "$url" ]]; then
-    url="https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-musl.tar.gz"
-    echo "  (releases API gave nothing usable; trying $url)"
-  fi
+# Does the binary actually RUN on this host? Being executable is not enough -- the glibc
+# build of Qdrant requires GLIBC_2.38 (Ubuntu 24.04+) and dies on the dynamic loader with
+#     libc.so.6: version `GLIBC_2.38' not found
+# on anything older. That is a loader failure, not a Qdrant failure, so it must be detected
+# here rather than surfacing later as "connection refused".
+qdrant_bin_works() {
+  local bin="$1" out=""
+  [[ -x "$bin" ]] || return 1
+  out="$("$bin" --version 2>&1 || true)"
+  case "$out" in
+    *GLIBC*|*"not found"*|*"cannot execute"*|*"No such file or directory"*) return 1 ;;
+  esac
+  return 0
+}
 
-  local tmp="$BIN_DIR/qdrant.tar.gz"
-  curl -fL --max-time 300 -o "$tmp" "$url"
-  tar xzf "$tmp" -C "$BIN_DIR"
+_qdrant_download() {
+  local url="$1" tmp="$BIN_DIR/qdrant.tar.gz"
+  echo "  fetching $url"
+  curl -fL --max-time 300 -o "$tmp" "$url" || return 1
+  tar xzf "$tmp" -C "$BIN_DIR" || { rm -f "$tmp"; return 1; }
   rm -f "$tmp"
-  # The archive layout varies (bare binary vs nested dir); find it either way.
-  if [[ ! -x "$BIN_DIR/qdrant" ]]; then
+  # Archive layout varies (bare binary vs nested dir); find it either way.
+  if [[ ! -f "$BIN_DIR/qdrant" ]]; then
     local found
-    found="$(find "$BIN_DIR" -maxdepth 3 -type f -name qdrant -perm -u+x | head -1 || true)"
+    found="$(find "$BIN_DIR" -maxdepth 3 -type f -name qdrant | head -1 || true)"
     [[ -n "$found" ]] && mv "$found" "$BIN_DIR/qdrant"
   fi
+  [[ -f "$BIN_DIR/qdrant" ]] || return 1
   chmod +x "$BIN_DIR/qdrant"
-  [[ -x "$BIN_DIR/qdrant" ]] || { echo "ERROR: qdrant binary not found in archive" >&2; return 1; }
+}
+
+ensure_qdrant_bin() {
+  # Validate rather than just checking existence: a previously downloaded but unrunnable
+  # binary (wrong libc) would otherwise be reused forever.
+  if qdrant_bin_works "$BIN_DIR/qdrant"; then
+    return 0
+  fi
+  if [[ -e "$BIN_DIR/qdrant" ]]; then
+    echo "  existing qdrant binary does not run here - replacing it"
+    rm -f "$BIN_DIR/qdrant"
+  fi
+
+  command -v curl >/dev/null 2>&1 || { echo "ERROR: curl required" >&2; return 1; }
+  echo "  downloading qdrant"
+
+  # Resolve assets from the releases API rather than hardcoding a filename: Qdrant has
+  # changed its asset naming across releases, and a stale URL 404s in a way that looks
+  # like a network problem.
+  local assets=""
+  assets="$(curl -fsS --max-time 20 \
+             https://api.github.com/repos/qdrant/qdrant/releases/latest 2>/dev/null \
+           | sed -n 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+           || true)"
+
+  # MUSL FIRST, ALWAYS. The musl build is statically linked and runs on any glibc vintage;
+  # the gnu build needs GLIBC_2.38+. Ordering used to be whatever the API returned first,
+  # which picked gnu and broke on Ubuntu 22.04.
+  local candidates=() u=""
+  for pat in 'musl' 'gnu'; do
+    u="$(printf '%s\n' "$assets" | grep -E "x86_64-unknown-linux-${pat}\.tar\.gz$" | head -1 || true)"
+    [[ -n "$u" ]] && candidates+=("$u")
+  done
+  candidates+=("https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-musl.tar.gz")
+
+  for u in "${candidates[@]}"; do
+    if _qdrant_download "$u" && qdrant_bin_works "$BIN_DIR/qdrant"; then
+      echo "  qdrant binary OK ($("$BIN_DIR/qdrant" --version 2>&1 | head -1))"
+      return 0
+    fi
+    echo "  candidate unusable, trying next"
+    rm -f "$BIN_DIR/qdrant"
+  done
+
+  cat >&2 <<'EOF'
+ERROR: could not obtain a runnable qdrant binary.
+
+If the failure mentioned GLIBC, this host's glibc is older than the gnu build requires
+and the statically-linked musl build should have been used. Fetch it manually:
+
+  cd .cache/bin
+  curl -fLO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-musl.tar.gz
+  tar xzf qdrant-x86_64-unknown-linux-musl.tar.gz && chmod +x qdrant && ./qdrant --version
+EOF
+  return 1
 }
 
 start_qdrant_native() {
@@ -199,6 +251,10 @@ start_redis_native() {
   local bin
   bin="$(ensure_redis_bin)"
   echo "  starting redis on ${REDIS_PORT} using $bin"
+  # Redis will warn about `vm.overcommit_memory` at startup. IGNORE IT HERE: that warning
+  # is about fork-based background saves (RDB/AOF rewrite), and redis.benchmark.conf turns
+  # persistence off entirely (`appendonly no`, `save ""`). Nothing forks, so nothing can
+  # fail for want of overcommit. Fixing it would need root, which this path exists to avoid.
   # redis.benchmark.conf carries the settings that matter -- above all `databases 64`,
   # without which the runner cannot give each worker its own logical DB and parallelism
   # silently caps at 16. CLI flags after the config file override it, so port and dir are
