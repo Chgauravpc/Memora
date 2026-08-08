@@ -252,13 +252,40 @@ PROMOTABLE_TYPES = ["entity", "preference", "constraint", "instruction"]
 # 5-Signal Ranking Weights (must sum to 1.0)
 # Rebalanced to reduce semantic dominance and prioritize memory type diversity
 # Frequency reduced to minimal - it creates circular dependency (accessed memories rank higher)
+#
+# ENV-OVERRIDABLE so the benchmark can ablate the weighting without editing this file.
+# Defaults are unchanged, so the baseline measurement is exactly the shipped behaviour.
+#
+# Why this is worth ablating: `type` (0.40) currently outweighs `semantic` (0.30). That is
+# defensible for an assistant, where a dietary constraint matters whether or not the user
+# just mentioned it. It is questionable for question answering, where the answer to
+# "when did Melanie visit the museum" lives in a `fact` (0.5) or `event` (0.4) -- the two
+# LOWEST type priorities -- while an irrelevant `constraint` (1.0) collects 0.40 from type
+# alone and can outrank a well-matching event. See BENCHMARK_FINDINGS.md.
+def _rank_weight(name: str, default: float) -> float:
+    return float(os.getenv(f"RANK_W_{name.upper()}", str(default)))
+
+
 RANKING_WEIGHTS_5_SIGNAL = {
-    "semantic": 0.30,     # Semantic similarity (reduced: generic queries shouldn't dominate)
-    "type": 0.40,         # Memory type priority (increased: ensures diversity across types)
-    "recency": 0.10,      # Recency score (gentler penalty for old memories)
-    "frequency": 0.05,    # Access frequency (minimal: prevents circular dependency)
-    "confidence": 0.15,   # Confidence score (increased: extraction quality matters)
+    "semantic": _rank_weight("semantic", 0.30),
+    "type": _rank_weight("type", 0.40),
+    "recency": _rank_weight("recency", 0.10),
+    "frequency": _rank_weight("frequency", 0.05),
+    "confidence": _rank_weight("confidence", 0.15),
 }
+
+# Render the originating date alongside each retrieved memory.
+#
+# Memories are formatted as "- key: value [turn N, X% confident]". A turn index is
+# meaningless to a reader answering "when did this happen", and the stored `timestamp` is
+# datetime.now() at INGEST time, not the time the conversation describes. So temporal
+# questions are unanswerable from the context regardless of how good retrieval is.
+#
+# When enabled, the date is recovered from the leading "[...]" of `source_text`, which the
+# benchmark adapter puts there. Off by default: it changes the prompt for every caller, and
+# on a live assistant the ingest date and the event date usually coincide anyway.
+MEMORY_CONTEXT_INCLUDE_DATE = os.getenv(
+    "MEMORY_CONTEXT_INCLUDE_DATE", "false").strip().lower() in ("1", "true", "yes", "on")
 
 # Frequency scoring configuration
 FREQUENCY_DECAY_RATE = 0.05         # How fast frequency score decays

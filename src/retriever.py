@@ -6,10 +6,12 @@ superseding filter (Phase 3), and 5-signal ranking (Phase 4)
 
 import logging
 import math
+import re
 from typing import List, Dict, Optional
 
 from .config import (
     MAX_MEMORIES_TO_RETRIEVE,
+    MEMORY_CONTEXT_INCLUDE_DATE,
     MEMORY_TOKEN_BUDGET,
     MEMORY_TYPES,
     SEMANTIC_SEARCH_ENABLED,
@@ -32,6 +34,24 @@ from .config import (
 from .redis_store import RedisStore
 
 logger = logging.getLogger(__name__)
+
+# Leading "[8 May, 2023]"-style stamp that the LoCoMo adapter prefixes onto each turn
+# before handing it to process_turn(). Matched against `source_text`, which store_memory
+# already persists, so dates can be surfaced without re-ingesting anything.
+_SOURCE_DATE_RE = re.compile(r"^\s*\[([^\]]{3,40})\]")
+
+
+def _source_date(memory: Dict) -> Optional[str]:
+    """Date this memory came from, or None.
+
+    process_turn() accepts no timestamp argument, so callers that care about when
+    something happened fold it into the message text. `timestamp` on the memory is
+    datetime.now() at ingest, which for replayed or backfilled conversations is not the
+    date the content is about -- hence reading it back out of the source text instead.
+    """
+    src = memory.get('source_text') or ''
+    match = _SOURCE_DATE_RE.match(src)
+    return match.group(1).strip() if match else None
 
 
 class MemoryRetriever:
@@ -400,12 +420,24 @@ class MemoryRetriever:
             "fact": [],
             "event": [],
         }
-        
-        # Group by type
+
+        # Group by type.
+        #
+        # Anything with an unrecognised type is bucketed under "fact" rather than dropped.
+        # It used to be skipped silently, which meant a memory could be retrieved, counted
+        # in `retrieved_count`, have its access_count incremented -- and never reach the
+        # prompt. Stage 3 is asked for one of MEMORY_TYPES but an LLM can return something
+        # else, and the resulting loss was invisible in every statistic.
         for mem in memories:
-            mem_type = mem.get('type', 'fact')
+            mem_type = mem.get('type') or 'fact'
             if mem_type in sections:
                 sections[mem_type].append(mem)
+            else:
+                logger.debug(
+                    "Memory %s has unrecognised type %r; formatting it as 'fact'",
+                    mem.get('memory_id', '?'), mem_type,
+                )
+                sections["fact"].append(mem)
         
         # Format each section
         formatted_sections = []
@@ -424,7 +456,14 @@ class MemoryRetriever:
                 turn = mem.get('turn_number', 0)
                 
                 # Format: key: value [turn X, confidence Y%]
-                line = f"- {key}: {value} [turn {turn}, {confidence*100:.0f}% confident]"
+                # With MEMORY_CONTEXT_INCLUDE_DATE, prefix the date the memory came from
+                # so "when" questions are answerable at all.
+                stamp = f"turn {turn}"
+                if MEMORY_CONTEXT_INCLUDE_DATE:
+                    when = _source_date(mem)
+                    if when:
+                        stamp = f"{when}, turn {turn}"
+                line = f"- {key}: {value} [{stamp}, {confidence*100:.0f}% confident]"
                 section_lines.append(line)
             
             formatted_sections.append("\n".join(section_lines))
