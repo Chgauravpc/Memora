@@ -3,14 +3,18 @@ Redis Storage Layer - Long-Term Memory (Phase 3)
 Handles structured key-value storage with indices and semantic deduplication
 """
 
+import hashlib
 import logging
 import json
+import re
 import time
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 import redis
 
 from .config import (
+    DEDUP_KEY_INCLUDES_SPEAKER,
+    DEDUP_KEY_INCLUDES_VALUE,
     REDIS_HOST,
     REDIS_PORT,
     REDIS_DB,
@@ -25,6 +29,33 @@ from .config import (
 )
 
 logger = logging.getLogger(__name__)
+
+_WS_RE = re.compile(r"\s+")
+
+
+def build_dedup_key(memory: Dict) -> str:
+    """Identity under which a memory counts as an exact repeat of an earlier one.
+
+    Legacy identity is (type, key). That makes `entity:location` a GLOBAL singleton: the
+    first one stored wins permanently, and every later location -- a second speaker's, or
+    the same speaker having moved -- is silently discarded with only a confidence bump on
+    the original. Across a long multi-party conversation this is severe and invisible:
+    turns are consumed, extraction succeeds, and the memory simply never exists.
+
+    Including speaker keeps different people's facts apart. Including a hash of the
+    normalised value keeps different facts apart while still collapsing genuine verbatim
+    repeats, which is all this index was ever meant to do -- "this REPLACES that" is the
+    job of superseding (Phase 3), not of an exact-key collision.
+    """
+    parts = [str(memory.get('type', '')), str(memory.get('key', ''))]
+    if DEDUP_KEY_INCLUDES_SPEAKER:
+        parts.append(str(memory.get('speaker') or ''))
+    if DEDUP_KEY_INCLUDES_VALUE:
+        value = _WS_RE.sub(" ", str(memory.get('value') or '').strip().lower())
+        # Hashed rather than inlined: values are unbounded text and would otherwise
+        # produce unbounded Redis key names.
+        parts.append(hashlib.sha1(value.encode("utf-8")).hexdigest()[:16])
+    return f"{REDIS_DEDUP_PREFIX}{':'.join(parts)}"
 
 
 class RedisStore:
@@ -60,7 +91,7 @@ class RedisStore:
         memory_key = memory.get('key', '')
         
         # Check for key-based duplicates (Phase 1)
-        dedup_key = f"{REDIS_DEDUP_PREFIX}{memory_type}:{memory_key}"
+        dedup_key = build_dedup_key(memory)
         existing = self.client.get(dedup_key)
         
         if existing:
@@ -82,6 +113,12 @@ class RedisStore:
         memory.setdefault('merged_from', '')
         memory.setdefault('promoted_to_core', False)
         memory.setdefault('decay_applied', 0.0)
+
+        # Conversation-model fields. Empty string / 0.0 rather than None because Redis
+        # hashes cannot hold None, and the read path re-casts field by field.
+        memory.setdefault('speaker', '')
+        memory.setdefault('event_date', '')
+        memory.setdefault('event_ts', 0.0)
         
         # Convert None values to empty strings for Redis compatibility
         memory_to_store = {}
@@ -148,6 +185,13 @@ class RedisStore:
             memory['access_count'] = int(memory['access_count'])
         if 'decay_applied' in memory:
             memory['decay_applied'] = float(memory['decay_applied'])
+        # Conversation-model cast. Without it event_ts comes back as a string and any
+        # arithmetic on it (date-proximity scoring) fails or silently compares text.
+        if 'event_ts' in memory:
+            try:
+                memory['event_ts'] = float(memory['event_ts'] or 0.0)
+            except (TypeError, ValueError):
+                memory['event_ts'] = 0.0
         if 'promoted_to_core' in memory:
             memory['promoted_to_core'] = memory['promoted_to_core'] in ['True', 'true', '1', True]
         

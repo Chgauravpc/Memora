@@ -345,7 +345,14 @@ class MemoryExtractor:
             "last_accessed_turn": turn_number,
         }
 
-    def extract(self, message: str, turn_number: int) -> List[Dict]:
+    def extract(
+        self,
+        message: str,
+        turn_number: int,
+        speaker: Optional[str] = None,
+        event_date: Optional[str] = None,
+        event_ts: Optional[float] = None,
+    ) -> List[Dict]:
         """
         Full extraction pipeline (Phase 1, 2 & 3)
         
@@ -405,9 +412,24 @@ class MemoryExtractor:
         else:
             memories = stage2_memories
         
+        # Stamp conversation provenance onto everything both stages produced.
+        #
+        # Done once here rather than threaded through every _create_memory call site and
+        # the LLM path separately: provenance is a property of the TURN, not of how the
+        # memory happened to be extracted, and a single choke point cannot drift out of
+        # sync the way a dozen call sites would.
+        if speaker or event_date or event_ts:
+            for mem in memories:
+                if speaker and not mem.get('speaker'):
+                    mem['speaker'] = speaker
+                if event_date and not mem.get('event_date'):
+                    mem['event_date'] = event_date
+                if event_ts and not mem.get('event_ts'):
+                    mem['event_ts'] = event_ts
+
         # Filter by minimum confidence threshold
         high_confidence_memories = [
-            m for m in memories 
+            m for m in memories
             if m['confidence'] >= MIN_CONFIDENCE_TO_STORE
         ]
         

@@ -104,6 +104,43 @@ REDIS_DEDUP_PREFIX = "dedup:"
 REDIS_TYPE_INDEX_PREFIX = "type:"
 REDIS_RECENCY_INDEX = "recent_memories"
 
+# ---------------------------------------------------------------------------
+# ARCHITECTURE PROFILE
+# ---------------------------------------------------------------------------
+# Memora was designed for a single user talking about themselves in the first person
+# ("I prefer X", "my name is Y"). A large class of real workloads -- and every
+# conversational-memory benchmark -- is instead MULTI-PARTY and TIME-ANCHORED: several
+# speakers recounting events that happened on particular dates, across many sessions.
+#
+# Three assumptions break in that setting, all of them silently:
+#
+#   1. No speaker.     process_turn() takes only text, so facts about different people
+#                      merge into one undifferentiated pool. "Who did X" becomes
+#                      unanswerable and attribution is quietly wrong.
+#   2. No event time.  `timestamp` is datetime.now() at ingest, not when the thing
+#                      happened, so "when" questions cannot be answered at all.
+#   3. Global key dedup. `dedup:<type>:<key>` is keyed on (type, key) with no speaker and
+#                      no value, so the FIRST `entity:location` permanently blocks every
+#                      later one -- a second speaker's location, or the same speaker
+#                      moving house, is discarded rather than stored.
+#
+# MEMORA_PROFILE selects between:
+#   "conversation" (default) -- speaker- and time-aware; the architecture below.
+#   "legacy"                 -- exactly the pre-redesign behaviour, for A/B comparison.
+#
+# Everything the profile switches on is individually overridable, so any published number
+# can state precisely which mechanisms were active.
+MEMORA_PROFILE = os.getenv("MEMORA_PROFILE", "conversation").strip().lower()
+_CONV = MEMORA_PROFILE == "conversation"
+
+
+def _flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 # Memory Record Fields
 MEMORY_FIELDS = [
     "memory_id",
@@ -114,6 +151,13 @@ MEMORY_FIELDS = [
     "turn_number",
     "timestamp",
     "source_text",
+    # Conversation-model fields. `speaker` is who the memory is ABOUT (the utterer);
+    # `event_date` is the human-readable date the content refers to, and `event_ts` its
+    # epoch form for range queries. All three are distinct from `timestamp`, which
+    # remains ingest wall-clock.
+    "speaker",
+    "event_date",
+    "event_ts",
     "mention_count",     # Phase 3: Track repetitions for confidence boost
     "superseded_by",     # Phase 3: ID of memory that supersedes this one
     "supersedes",        # Phase 3: ID of memory this one supersedes
@@ -266,12 +310,27 @@ def _rank_weight(name: str, default: float) -> float:
     return float(os.getenv(f"RANK_W_{name.upper()}", str(default)))
 
 
+#
+# The conversation profile inverts the type/semantic balance. Type priority answers
+# "how important is this KIND of memory in general", which is the right question when
+# deciding what an assistant must never forget, and the wrong one when deciding which
+# memory answers the question in front of you. Under the legacy weights an entirely
+# irrelevant `constraint` scores 0.40 from type alone and outranks a well-matching
+# `event` at 0.34 -- and conversational answers live almost entirely in `fact` and
+# `event`, the two lowest priorities.
+_W = {
+    "conversation": {"semantic": 0.55, "type": 0.10, "recency": 0.10,
+                     "frequency": 0.05, "confidence": 0.20},
+    "legacy": {"semantic": 0.30, "type": 0.40, "recency": 0.10,
+               "frequency": 0.05, "confidence": 0.15},
+}[("conversation" if _CONV else "legacy")]
+
 RANKING_WEIGHTS_5_SIGNAL = {
-    "semantic": _rank_weight("semantic", 0.30),
-    "type": _rank_weight("type", 0.40),
-    "recency": _rank_weight("recency", 0.10),
-    "frequency": _rank_weight("frequency", 0.05),
-    "confidence": _rank_weight("confidence", 0.15),
+    "semantic": _rank_weight("semantic", _W["semantic"]),
+    "type": _rank_weight("type", _W["type"]),
+    "recency": _rank_weight("recency", _W["recency"]),
+    "frequency": _rank_weight("frequency", _W["frequency"]),
+    "confidence": _rank_weight("confidence", _W["confidence"]),
 }
 
 # Render the originating date alongside each retrieved memory.
@@ -284,8 +343,69 @@ RANKING_WEIGHTS_5_SIGNAL = {
 # When enabled, the date is recovered from the leading "[...]" of `source_text`, which the
 # benchmark adapter puts there. Off by default: it changes the prompt for every caller, and
 # on a live assistant the ingest date and the event date usually coincide anyway.
-MEMORY_CONTEXT_INCLUDE_DATE = os.getenv(
-    "MEMORY_CONTEXT_INCLUDE_DATE", "false").strip().lower() in ("1", "true", "yes", "on")
+MEMORY_CONTEXT_INCLUDE_DATE = _flag("MEMORY_CONTEXT_INCLUDE_DATE", _CONV)
+
+# ---------------------------------------------------------------------------
+# CONVERSATION-PROFILE MECHANISMS
+# ---------------------------------------------------------------------------
+
+# Dedup identity. Legacy: (type, key) -- globally unique forever, so distinct facts
+# sharing a key annihilate each other. Conversation: (type, key, speaker, value), so a
+# repeat of the SAME statement still dedups, while a different speaker or a changed value
+# is preserved as its own memory. Superseding (Phase 3) remains the mechanism for "this
+# replaces that"; exact-key dedup should never have been doing that job implicitly.
+DEDUP_KEY_INCLUDES_SPEAKER = _flag("DEDUP_KEY_INCLUDES_SPEAKER", _CONV)
+DEDUP_KEY_INCLUDES_VALUE = _flag("DEDUP_KEY_INCLUDES_VALUE", _CONV)
+
+# Semantic dedup must not merge the same kind of event across different dates -- two
+# museum visits months apart are two memories, and collapsing them destroys exactly the
+# distinctions a temporal or multi-hop question probes.
+SEMANTIC_DEDUP_RESPECTS_DATE = _flag("SEMANTIC_DEDUP_RESPECTS_DATE", _CONV)
+
+# Embedding text. Legacy embeds "key | value | type: event" -- a terse fragment with a
+# constant noise suffix, compared against natural-language questions. Conversation embeds
+# a natural sentence including speaker and date, which sits far closer to query phrasing
+# in the same vector space.
+EMBED_NATURAL_TEXT = _flag("EMBED_NATURAL_TEXT", _CONV)
+
+# Lexical (BM25) retrieval fused with dense search by Reciprocal Rank Fusion.
+# Dense embeddings from a 384-dim MiniLM are weak on rare proper nouns -- exactly the
+# names, places and titles that conversational questions turn on. BM25 is excellent at
+# them. The two fail differently, which is what makes fusing them worth more than tuning
+# either alone.
+LEXICAL_SEARCH_ENABLED = _flag("LEXICAL_SEARCH_ENABLED", _CONV)
+LEXICAL_SEARCH_LIMIT = int(os.getenv("LEXICAL_SEARCH_LIMIT", "100"))
+RRF_K = int(os.getenv("RRF_K", "60"))  # standard RRF damping constant
+FUSION_WEIGHT_DENSE = float(os.getenv("FUSION_WEIGHT_DENSE", "1.0"))
+FUSION_WEIGHT_LEXICAL = float(os.getenv("FUSION_WEIGHT_LEXICAL", "1.0"))
+
+# Context rendering. Legacy groups memories by TYPE, which destroys chronology -- the
+# reader sees preferences, then entities, then events, with no way to order them. For
+# reasoning over "what happened when", and for chaining facts across sessions, temporal
+# order carries most of the signal.
+CONTEXT_CHRONOLOGICAL = _flag("CONTEXT_CHRONOLOGICAL", _CONV)
+CONTEXT_INCLUDE_SPEAKER = _flag("CONTEXT_INCLUDE_SPEAKER", _CONV)
+
+# Include the originating utterance for the highest-ranked memories. key:value is a lossy
+# compression of what was said; for the top few memories the raw sentence often carries
+# the detail the question actually asks for. Bounded so it cannot dominate the budget.
+CONTEXT_EVIDENCE_TOP_N = int(os.getenv("CONTEXT_EVIDENCE_TOP_N", "8" if _CONV else "0"))
+CONTEXT_EVIDENCE_MAX_CHARS = int(os.getenv("CONTEXT_EVIDENCE_MAX_CHARS", "220"))
+
+# Query-aware retrieval. When a query asks WHEN something happened, memories carrying a
+# date are more useful than those without; when it names a person, memories attributed to
+# that person are. Both are properties of the QUERY, computed generically -- no dataset
+# vocabulary, no per-benchmark rules.
+QUERY_AWARE_RETRIEVAL = _flag("QUERY_AWARE_RETRIEVAL", _CONV)
+TEMPORAL_INTENT_BOOST = float(os.getenv("TEMPORAL_INTENT_BOOST", "0.15"))
+SPEAKER_MATCH_BOOST = float(os.getenv("SPEAKER_MATCH_BOOST", "0.15"))
+
+# Second retrieval pass seeded with entities found in the first. Multi-hop questions name
+# one entity and ask about another reachable only through it; a single similarity lookup
+# against the original question cannot cross that gap.
+MULTIHOP_EXPANSION_ENABLED = _flag("MULTIHOP_EXPANSION_ENABLED", _CONV)
+MULTIHOP_SEED_MEMORIES = int(os.getenv("MULTIHOP_SEED_MEMORIES", "5"))
+MULTIHOP_EXTRA_LIMIT = int(os.getenv("MULTIHOP_EXTRA_LIMIT", "30"))
 
 # Frequency scoring configuration
 FREQUENCY_DECAY_RATE = 0.05         # How fast frequency score decays

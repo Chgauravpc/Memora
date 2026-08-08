@@ -7,6 +7,8 @@ import logging
 from typing import List, Optional, Union
 import numpy as np
 
+from .config import EMBED_NATURAL_TEXT
+
 logger = logging.getLogger(__name__)
 
 # Lazy loading of the model to avoid slow startup
@@ -114,21 +116,44 @@ class EmbeddingService:
         Returns:
             Embedding vector
         """
-        # Combine memory fields for embedding
-        parts = []
-        
-        if memory.get('key'):
-            parts.append(memory['key'])
-        
-        if memory.get('value'):
-            parts.append(memory['value'])
-        
-        # Include type for additional context
-        if memory.get('type'):
-            parts.append(f"type: {memory['type']}")
-        
-        text = " | ".join(parts) if parts else ""
-        return self.embed_text(text)
+        return self.embed_text(self.memory_embedding_text(memory))
+
+    @staticmethod
+    def memory_embedding_text(memory: dict) -> str:
+        """Text used to represent a memory in vector space.
+
+        The legacy form is "key | value | type: event" -- pipe-delimited fragments with a
+        constant type suffix. Two problems:
+
+          * Queries are natural-language questions. Embedding a fragment and comparing it
+            to a sentence puts the two in systematically different regions of the space;
+            sentence encoders like MiniLM are trained on sentence pairs, not on key-value
+            debris.
+          * "type: event" appears verbatim in every memory of that type, so it adds a
+            constant component to thousands of vectors -- pure noise that shifts everything
+            toward a common direction and compresses the distinctions being searched on.
+
+        The conversation form reads as a short natural sentence, including who said it and
+        when, so speaker and date become searchable content rather than invisible metadata.
+        """
+        key = str(memory.get('key') or '').replace('_', ' ').strip()
+        value = str(memory.get('value') or '').strip()
+
+        if not EMBED_NATURAL_TEXT:
+            parts = [p for p in (key, value) if p]
+            if memory.get('type'):
+                parts.append(f"type: {memory['type']}")
+            return " | ".join(parts)
+
+        speaker = str(memory.get('speaker') or '').strip()
+        date = str(memory.get('event_date') or '').strip()
+
+        core = f"{key}: {value}" if key and value else (value or key)
+        if speaker:
+            core = f"{speaker} - {core}"
+        if date:
+            core = f"{core} (on {date})"
+        return core
     
     def compute_similarity(
         self, 

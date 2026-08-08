@@ -43,6 +43,7 @@ be sanity-checked against the actual file rather than trusted.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import re
 from dataclasses import dataclass, field
@@ -70,6 +71,27 @@ class Turn:
     text: str
     dia_id: str
     blip_caption: Optional[str] = None
+
+    @property
+    def event_ts(self) -> float:
+        """`session_date` as epoch seconds, or 0.0 if it cannot be parsed.
+
+        Used for ordering and proximity comparisons. LoCoMo dates appear in a few forms
+        ("8 May, 2023", "8 May 2023"), so several patterns are tried and an unparseable
+        date degrades to 0.0 rather than raising -- the human-readable `event_date` is
+        still stored and remains answerable either way.
+        """
+        raw = (self.session_date or "").strip()
+        if not raw:
+            return 0.0
+        cleaned = raw.replace(",", " ")
+        cleaned = " ".join(cleaned.split())
+        for fmt in ("%d %B %Y", "%d %b %Y", "%B %d %Y", "%b %d %Y", "%Y-%m-%d"):
+            try:
+                return _dt.datetime.strptime(cleaned, fmt).timestamp()
+            except ValueError:
+                continue
+        return 0.0
 
     def render(self, include_date: bool = True) -> str:
         """

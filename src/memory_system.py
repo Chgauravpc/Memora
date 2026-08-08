@@ -21,6 +21,7 @@ from .config import (
     SEMANTIC_DEDUP_ENABLED,
     SEMANTIC_DEDUP_THRESHOLD,
     SEMANTIC_DEDUP_CHECK_LIMIT,
+    SEMANTIC_DEDUP_RESPECTS_DATE,
     # Phase 4 config
     CONSOLIDATION_ENABLED,
     CONSOLIDATION_INTERVAL_TURNS,
@@ -157,20 +158,32 @@ class MemorySystem:
         logger.info(f"Initialized memory system for user {user_id} (semantic={self._semantic_enabled})")
 
     def process_turn(
-        self, 
+        self,
         user_message: str,
         priority_types: Optional[List[str]] = None,
+        speaker: Optional[str] = None,
+        event_date: Optional[str] = None,
+        event_ts: Optional[float] = None,
     ) -> Tuple[str, Dict]:
         """
         Process a single conversation turn.
-        
+
         This is the main entry point for the memory system.
         Call this for each user message before generating a response.
-        
+
         Args:
             user_message: The user's message text
             priority_types: Optional list of memory types to prioritize
-        
+            speaker: Who is speaking. Required to keep several people's facts apart --
+                without it every participant's memories merge into one pool and
+                attribution is silently wrong. Optional so single-user callers are
+                unaffected.
+            event_date: Human-readable date the turn refers to (e.g. "8 May, 2023").
+                Distinct from `timestamp`, which is ingest wall-clock: for replayed or
+                backfilled conversations those differ by years, and only this one can
+                answer "when did that happen".
+            event_ts: Epoch form of event_date, for range and proximity comparisons.
+
         Returns:
             (memory_context, stats) where:
             - memory_context: Formatted string to inject into prompt
@@ -193,8 +206,14 @@ class MemorySystem:
         
         # STEP 1: EXTRACT - Identify memories from this message
         extract_start = time.time()
-        extracted_memories = self.extractor.extract(user_message, self.turn_number)
-        
+        extracted_memories = self.extractor.extract(
+            user_message,
+            self.turn_number,
+            speaker=speaker,
+            event_date=event_date,
+            event_ts=event_ts,
+        )
+
         # Add user_id to all extracted memories
         for memory in extracted_memories:
             memory['user_id'] = self.user_id
@@ -315,12 +334,30 @@ class MemorySystem:
             if similar:
                 # Return the most similar memory's ID
                 duplicate_id, score = similar[0]
+
+                # Two recountings of the SAME KIND of event on DIFFERENT dates are two
+                # events, not a duplicate. Merging them is not a harmless space saving:
+                # it erases precisely the distinctions that "when did X happen" and
+                # any chain of reasoning across sessions depend on. Cosine similarity
+                # cannot see dates, so this has to be checked explicitly.
+                if SEMANTIC_DEDUP_RESPECTS_DATE:
+                    new_date = (memory.get('event_date') or '').strip()
+                    if new_date:
+                        existing = self.redis_store.get_memory(duplicate_id)
+                        old_date = ((existing or {}).get('event_date') or '').strip()
+                        if old_date and old_date != new_date:
+                            logger.info(
+                                f"Near-duplicate {duplicate_id} kept separate: "
+                                f"different event dates ({old_date!r} vs {new_date!r})"
+                            )
+                            return None
+
                 logger.info(
                     f"Semantic duplicate detected: {duplicate_id} "
                     f"(similarity={score:.3f}, threshold={SEMANTIC_DEDUP_THRESHOLD})"
                 )
                 return duplicate_id
-            
+
             return None
             
         except Exception as e:

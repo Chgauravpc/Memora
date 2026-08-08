@@ -88,6 +88,32 @@ def _reset_user_dir(user_id: str) -> None:
         shutil.rmtree(user_dir, ignore_errors=True)
 
 
+def _architecture_snapshot() -> Dict[str, Any]:
+    """Which memory-architecture mechanisms were active for this run.
+
+    Imported lazily because src.config freezes env into module constants at import time,
+    and the worker sets those constants up before this is called.
+    """
+    try:
+        from src import config as c
+    except Exception:  # noqa: BLE001
+        return {"profile": "unknown"}
+    return {
+        "profile": getattr(c, "MEMORA_PROFILE", "unknown"),
+        "ranking_weights": dict(getattr(c, "RANKING_WEIGHTS_5_SIGNAL", {})),
+        "lexical_search": getattr(c, "LEXICAL_SEARCH_ENABLED", None),
+        "chronological_context": getattr(c, "CONTEXT_CHRONOLOGICAL", None),
+        "context_dates": getattr(c, "MEMORY_CONTEXT_INCLUDE_DATE", None),
+        "context_speaker": getattr(c, "CONTEXT_INCLUDE_SPEAKER", None),
+        "query_aware": getattr(c, "QUERY_AWARE_RETRIEVAL", None),
+        "multihop_expansion": getattr(c, "MULTIHOP_EXPANSION_ENABLED", None),
+        "dedup_speaker": getattr(c, "DEDUP_KEY_INCLUDES_SPEAKER", None),
+        "dedup_value": getattr(c, "DEDUP_KEY_INCLUDES_VALUE", None),
+        "embed_natural": getattr(c, "EMBED_NATURAL_TEXT", None),
+        "max_memories": getattr(c, "MAX_MEMORIES_TO_RETRIEVE", None),
+    }
+
+
 def _stratified_sample(questions: List[Question], limit: int) -> List[Question]:
     """Take `limit` questions spread across categories, not the first `limit`.
 
@@ -187,7 +213,16 @@ def run_conversation(
 
     for i, turn in enumerate(turns, 1):
         try:
-            _, stats = system.process_turn(turn.render(include_date=include_dates))
+            # Speaker and date go through the API now rather than being folded into the
+            # text and hoped for. Folding made them extraction-dependent: whether a fact
+            # kept its attribution came down to whether the LLM happened to copy it into
+            # the value. As real fields they are always present, indexable and rankable.
+            _, stats = system.process_turn(
+                turn.render(include_date=include_dates),
+                speaker=turn.speaker,
+                event_date=turn.session_date if include_dates else None,
+                event_ts=turn.event_ts if include_dates else None,
+            )
             extracted_total += int(stats.get("extracted_count", 0) or 0)
         except Exception as exc:  # noqa: BLE001
             turn_errors += 1
@@ -283,6 +318,11 @@ def run_conversation(
             "include_adversarial": include_adversarial,
             "reader_model": client.model,
             "reader_provider": client.provider,
+            # Which architecture produced this result. Recorded per-file so a number can
+            # never be quoted without knowing what was switched on -- these mechanisms
+            # change the system under test, and a results file that does not say so is
+            # not reportable.
+            **_architecture_snapshot(),
         },
         "ingest": {
             # Turns actually processed, not the conversation length: --max-turns and

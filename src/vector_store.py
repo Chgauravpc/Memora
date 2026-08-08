@@ -117,6 +117,14 @@ class VectorStore:
                 "confidence": float(memory.get('confidence', 0.5)),
                 "turn_number": int(memory.get('turn_number', 0)),
                 "timestamp": float(memory.get('timestamp', 0)),
+                # Conversation-model fields. Carried in the payload so a hit remains
+                # usable when Redis has lost the record and retrieval falls back to the
+                # payload -- without these, that fallback silently drops attribution and
+                # date, which is exactly when it matters most.
+                "speaker": str(memory.get('speaker') or ''),
+                "event_date": str(memory.get('event_date') or ''),
+                "event_ts": float(memory.get('event_ts') or 0.0),
+                "source_text": str(memory.get('source_text') or ''),
             }
             
             # Upsert point (update if exists, insert if new)
