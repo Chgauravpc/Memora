@@ -15,7 +15,9 @@ from .lexical_index import (
     reciprocal_rank_fusion,
 )
 from .config import (
+    ALWAYS_ON_SEMANTIC_FLOOR,
     CONTEXT_CHRONOLOGICAL,
+    DATE_MATCH_BOOST,
     CONTEXT_EVIDENCE_MAX_CHARS,
     CONTEXT_EVIDENCE_TOP_N,
     CONTEXT_INCLUDE_SPEAKER,
@@ -77,8 +79,47 @@ _TEMPORAL_INTENT_RE = re.compile(
 _CAPITALISED_RE = re.compile(r"(?<!^)(?<![.!?]\s)\b([A-Z][a-z]{2,})\b")
 
 
+# Dates a query names. Generic calendar vocabulary -- years and month names -- not any
+# dataset's formatting. Language-specific (English), like the stopword list and the
+# temporal-intent patterns above; not benchmark-specific.
+_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+_MONTHS = (
+    "january february march april may june july august september october november december"
+).split()
+_MONTH_ABBR = tuple(m[:3] for m in _MONTHS)
+
+
 def has_temporal_intent(query: str) -> bool:
     return bool(_TEMPORAL_INTENT_RE.search(query or ""))
+
+
+def query_dates(query: str) -> set:
+    """Year and month tokens named in the query, lowercased.
+
+    A question asking "when" is served by any dated memory; a question naming *May 2023*
+    is served by memories from May 2023 specifically. Without this, temporal scoring
+    cannot tell those apart -- every dated memory gets the same credit.
+    """
+    text = (query or "").lower()
+    found = {m.group(0) for m in _YEAR_RE.finditer(text)}
+    for full, abbr in zip(_MONTHS, _MONTH_ABBR):
+        if re.search(rf"\b{abbr}[a-z]*\b", text) and (full in text or abbr in text):
+            found.add(abbr)
+    return found
+
+
+def date_overlap(query_tokens: set, event_date: str) -> bool:
+    """True when a memory's date shares a year or month with the query's."""
+    if not query_tokens or not event_date:
+        return False
+    d = event_date.lower()
+    for tok in query_tokens:
+        if tok.isdigit():
+            if tok in d:
+                return True
+        elif re.search(rf"\b{tok}[a-z]*\b", d):
+            return True
+    return False
 
 
 def query_entities(query: str) -> set:
@@ -370,19 +411,36 @@ class MemoryRetriever:
             logger.debug(f"Recency branch added {recency_added} new candidates (hybrid mode)")
         
         # Step 2: Always include constraint and instruction types
+        #
+        # THE FLOOR IS A SECOND PATH FOR THE PROBLEM THE RANKING WEIGHTS FIXED.
+        #
+        # These memories are injected regardless of relevance, then given a FIXED semantic
+        # score. At the legacy floor of 0.5 with the conversation profile's semantic weight
+        # of 0.55, an entirely irrelevant constraint collects 0.275 from the relevance
+        # signal alone. After RRF normalisation only the top hit scores 1.0 and a
+        # single-channel hit around rank 50 normalises to roughly 0.28 -- so rebalancing
+        # type 0.40 -> 0.10 achieved little, because the same crowding simply moved into
+        # the semantic term.
+        #
+        # Two changes: the floor is configurable and much lower under the conversation
+        # profile, and it no longer OVERWRITES a real score. Raising an already-retrieved
+        # memory to the floor flattened genuinely relevant always-on hits onto the same
+        # value as irrelevant ones, destroying the ordering among them.
         always_on_types = ["constraint", "instruction"]
         for mem_type in always_on_types:
             memories = self.redis_store.get_memories_by_type(mem_type, limit=20)
             for mem in memories:
                 mem_id = mem['memory_id']
                 if mem_id not in all_memories:
-                    mem['semantic_score'] = 0.5  # Default score for always-on
+                    mem['semantic_score'] = ALWAYS_ON_SEMANTIC_FLOOR
+                    mem['always_on'] = True
                     all_memories[mem_id] = mem
-                # Boost semantic score for always-on types already found
-                elif mem_id in all_memories:
+                else:
+                    # Already retrieved on merit: keep the earned score, never lower or
+                    # flatten it.
                     all_memories[mem_id]['semantic_score'] = max(
-                        all_memories[mem_id].get('semantic_score', 0), 
-                        0.5
+                        float(all_memories[mem_id].get('semantic_score', 0) or 0),
+                        ALWAYS_ON_SEMANTIC_FLOOR,
                     )
         
         # Step 3: Add priority types if specified
@@ -400,6 +458,7 @@ class MemoryRetriever:
         # Computed once per query, not per memory.
         temporal_intent = QUERY_AWARE_RETRIEVAL and has_temporal_intent(current_message)
         q_entities = query_entities(current_message) if QUERY_AWARE_RETRIEVAL else set()
+        q_dates = query_dates(current_message) if QUERY_AWARE_RETRIEVAL else set()
 
         ranked_memories = []
         
@@ -463,8 +522,14 @@ class MemoryRetriever:
             # Additive and small, so they reorder near-ties rather than overriding
             # relevance. No dataset vocabulary is involved.
             if QUERY_AWARE_RETRIEVAL:
-                if temporal_intent and (memory.get('event_date') or '').strip():
+                mem_date = (memory.get('event_date') or '').strip()
+                if temporal_intent and mem_date:
                     final_score += TEMPORAL_INTENT_BOOST
+                # Carrying the RIGHT date beats carrying any date. Stacks with the intent
+                # boost, because a dated memory matching the asked-about period is the
+                # strongest temporal evidence available.
+                if q_dates and date_overlap(q_dates, mem_date):
+                    final_score += DATE_MATCH_BOOST
                 if q_entities:
                     speaker = str(memory.get('speaker') or '').strip().lower()
                     if speaker and speaker in q_entities:

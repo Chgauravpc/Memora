@@ -401,7 +401,9 @@ class MemoryExtractor:
                     message=message,
                     turn_number=turn_number,
                     context_turns=self.context_buffer[:-1],  # Exclude current message
-                    stage2_hint=stage2_hint
+                    stage2_hint=stage2_hint,
+                    speaker=speaker,
+                    event_date=event_date,
                 )
                 
                 # Merge Stage 2 and Stage 3, preferring Stage 3 if higher confidence

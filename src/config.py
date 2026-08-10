@@ -400,6 +400,28 @@ QUERY_AWARE_RETRIEVAL = _flag("QUERY_AWARE_RETRIEVAL", _CONV)
 TEMPORAL_INTENT_BOOST = float(os.getenv("TEMPORAL_INTENT_BOOST", "0.15"))
 SPEAKER_MATCH_BOOST = float(os.getenv("SPEAKER_MATCH_BOOST", "0.15"))
 
+# Extra credit when a memory's date matches a date the QUERY names. Temporal intent alone
+# only rewards carrying *a* date; this rewards carrying the *right* one, which is the
+# difference between "a dated memory" and "the answer".
+DATE_MATCH_BOOST = float(os.getenv("DATE_MATCH_BOOST", "0.25"))
+
+# Relevance score given to `constraint`/`instruction` memories injected regardless of the
+# query. Legacy pinned this at 0.5, which -- once semantic weight rose to 0.55 -- let an
+# irrelevant constraint outrank genuinely matching memories, recreating in the semantic
+# term exactly the crowding the type-weight rebalance removed. Matching the recency
+# fallback keeps them present without letting them displace relevance.
+ALWAYS_ON_SEMANTIC_FLOOR = float(
+    os.getenv("ALWAYS_ON_SEMANTIC_FLOOR", "0.15" if _CONV else "0.5"))
+
+# Semantic dedup must not merge two SPEAKERS' similar statements. Cosine cannot see who
+# said something, so "likes hiking" from two people looks identical and the second is
+# discarded -- the same silent loss the exact-key dedup fix addressed, by another route.
+SEMANTIC_DEDUP_RESPECTS_SPEAKER = _flag("SEMANTIC_DEDUP_RESPECTS_SPEAKER", _CONV)
+
+# Tell the Stage 3 extractor who is speaking. Its prompt is written for a single
+# first-person user ("facts about the user"), which mis-frames every multi-party turn.
+SPEAKER_AWARE_EXTRACTION = _flag("SPEAKER_AWARE_EXTRACTION", _CONV)
+
 # Second retrieval pass seeded with entities found in the first. Multi-hop questions name
 # one entity and ask about another reachable only through it; a single similarity lookup
 # against the original question cannot cross that gap.

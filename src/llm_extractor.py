@@ -23,6 +23,7 @@ from .config import (
     STAGE_3_MAX_ATTEMPTS,
     STAGE_3_BACKOFF_BASE,
     STAGE_3_BACKOFF_MAX,
+    SPEAKER_AWARE_EXTRACTION,
     UPDATE_PATTERNS,
 )
 
@@ -200,21 +201,33 @@ Output (valid JSON array only):"""
             logger.info(f"LLM Extractor initialized (provider={self.provider}, model={self.model})")
     
     def extract(
-        self, 
-        message: str, 
+        self,
+        message: str,
         turn_number: int,
         context_turns: Optional[List[str]] = None,
         stage2_hint: Optional[str] = None,
+        speaker: Optional[str] = None,
+        event_date: Optional[str] = None,
     ) -> List[Dict]:
         """
         Extract memories using LLM.
-        
+
         Args:
             message: User's message
             turn_number: Current turn number
             context_turns: Last 3 turns for context (optional)
             stage2_hint: Hint from Stage 2 about likely type (optional)
-        
+            speaker: Who is speaking. The base prompt is written for a single
+                first-person user ("factual information about the user"), which mis-frames
+                every turn of a conversation between several people -- it invites keys
+                like `user_name` for whoever spoke last and gives the model no way to
+                attribute a fact to the right person. Naming the speaker fixes the frame.
+                This matters more than it looks: at the ~80% Stage 3 escalation measured
+                on conversational text, this prompt writes nearly every memory in the
+                store, so its framing is the ceiling on everything downstream.
+            event_date: When the turn's content is set, so the model can keep relative
+                references ("last week") interpretable rather than dropping them.
+
         Returns:
             List of extracted memory dictionaries
         """
@@ -231,6 +244,32 @@ Output (valid JSON array only):"""
                 message=message
             )
             
+            # Re-frame for multi-party conversation.
+            #
+            # Prepended rather than templated into EXTRACTION_PROMPT so the base prompt --
+            # and therefore the legacy profile -- is untouched and remains directly
+            # comparable. The instructions below are about conversational structure
+            # (several speakers, third-person narrative, past events); nothing here is
+            # specific to any dataset.
+            if SPEAKER_AWARE_EXTRACTION and speaker:
+                preamble = (
+                    f"This is a conversation between several people. The current turn is "
+                    f"spoken by {speaker}.\n"
+                    f"- Extract facts about ANY person mentioned, not only about a 'user'.\n"
+                    f"- Attribute correctly: a fact {speaker} states about someone else "
+                    f"belongs to that person, not to {speaker}.\n"
+                    f"- Do NOT invent generic keys like 'user_name'. Name the subject.\n"
+                    f"- Past events are worth remembering; use type 'event' for things "
+                    f"that happened and 'fact' for stable information.\n"
+                )
+                if event_date:
+                    preamble += (
+                        f"- This turn takes place on {event_date}. Resolve relative time "
+                        f"references ('last week', 'yesterday') against that date and "
+                        f"keep them in the value.\n"
+                    )
+                prompt = preamble + "\n" + prompt
+
             # Add stage 2 hint if available
             if stage2_hint:
                 prompt += f"\n\nHINT: Stage 2 detected possible {stage2_hint} type."

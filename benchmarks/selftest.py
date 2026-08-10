@@ -151,6 +151,41 @@ def test_query_intent() -> None:
     check("ignores the sentence-initial word", "when" not in ents)
 
 
+def test_query_dates() -> None:
+    print("\ndate-aware scoring")
+    r = _reload("conversation")
+
+    d = r.query_dates("What did she do in May 2023?")
+    check("finds year and month named in the query", "2023" in d and "may" in d)
+    check("no dates in an undated question", r.query_dates("What is her job?") == set())
+
+    may23 = r.query_dates("anything from May 2023?")
+    check("matches a memory from the same month",
+          r.date_overlap(may23, "8 May, 2023"))
+    check("rejects a different month and year",
+          not r.date_overlap(may23, "3 March, 2019"))
+    check("year alone is enough", r.date_overlap({"2023"}, "12 June, 2023"))
+    check("empty inputs are safe",
+          not r.date_overlap(set(), "8 May, 2023") and not r.date_overlap({"2023"}, ""))
+
+
+def test_always_on_floor() -> None:
+    print("\nalways-on relevance floor")
+    _reload("conversation")
+    from src.config import (ALWAYS_ON_SEMANTIC_FLOOR as conv_floor,
+                            RANKING_WEIGHTS_5_SIGNAL as w)
+    # An always-on memory with zero relevance earns floor x semantic weight. Legacy paid
+    # 0.5 x 0.55 = 0.275, enough to outrank a real single-channel hit normalising near
+    # 0.28 -- the crowding the type-weight change was meant to remove.
+    contribution = conv_floor * w["semantic"]
+    check("irrelevant always-on memories cannot outrank real hits",
+          contribution < 0.10, f"contribution {contribution:.3f}")
+
+    _reload("legacy")
+    from src.config import ALWAYS_ON_SEMANTIC_FLOOR as legacy_floor
+    check("legacy floor preserved for A/B", legacy_floor == 0.5)
+
+
 def test_ranking_profiles() -> None:
     print("\nranking weights")
     _reload("conversation")
@@ -185,6 +220,42 @@ def test_embedding_text() -> None:
     from src.embedding_service import EmbeddingService as Legacy
     check("legacy form preserved",
           "type: event" in Legacy.memory_embedding_text(MEMS[0]))
+
+
+def test_speaker_prompt() -> None:
+    print("\nspeaker-aware extraction prompt")
+    _reload("conversation")
+    from src.llm_extractor import LLMExtractor
+
+    ex = object.__new__(LLMExtractor)
+    base = LLMExtractor.EXTRACTION_PROMPT
+    check("base prompt is single-user framed",
+          "about the user" in base.lower(),
+          "this is the framing the preamble corrects")
+
+    captured = {}
+
+    def fake_call(prompt):
+        captured["prompt"] = prompt
+        return "[]"
+
+    ex._call_llm = fake_call
+    ex.escalation_count = 0
+    ex.api_call_count = 0
+    ex.total_response_time_ms = 0.0
+    ex.provider = "test"
+
+    ex.extract("I went to the museum", 1, speaker="Melanie", event_date="8 May, 2023")
+    p = captured.get("prompt", "")
+    check("names the speaker", "Melanie" in p)
+    check("forbids generic user keys", "user_name" in p)
+    check("supplies the date for relative references", "8 May, 2023" in p)
+
+    captured.clear()
+    ex.extract("I went to the museum", 2)
+    p2 = captured.get("prompt", "")
+    check("no preamble when the speaker is unknown",
+          "conversation between several people" not in p2)
 
 
 def test_dataset_dates() -> None:
@@ -225,7 +296,8 @@ def main() -> int:
     print("=" * 66)
 
     for fn in (test_lexical, test_dedup_identity, test_context_rendering,
-               test_query_intent, test_ranking_profiles, test_embedding_text,
+               test_query_intent, test_query_dates, test_always_on_floor,
+               test_ranking_profiles, test_embedding_text, test_speaker_prompt,
                test_dataset_dates, test_stratified_sampling):
         try:
             fn()

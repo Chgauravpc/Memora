@@ -22,6 +22,7 @@ from .config import (
     SEMANTIC_DEDUP_THRESHOLD,
     SEMANTIC_DEDUP_CHECK_LIMIT,
     SEMANTIC_DEDUP_RESPECTS_DATE,
+    SEMANTIC_DEDUP_RESPECTS_SPEAKER,
     # Phase 4 config
     CONSOLIDATION_ENABLED,
     CONSOLIDATION_INTERVAL_TURNS,
@@ -334,6 +335,29 @@ class MemorySystem:
             if similar:
                 # Return the most similar memory's ID
                 duplicate_id, score = similar[0]
+
+                # Cosine similarity cannot see WHO said something. "likes hiking" from two
+                # different people is one vector, so without this the second speaker's
+                # fact is discarded and merely boosts the first's confidence -- the same
+                # silent loss the exact-key dedup fix addressed, reached by another route.
+                # The vector filter covers type and user, not speaker, so it is checked
+                # here against the authoritative record.
+                if SEMANTIC_DEDUP_RESPECTS_SPEAKER:
+                    new_speaker = (memory.get('speaker') or '').strip().lower()
+                    if new_speaker:
+                        for cand_id, _cand_score in similar:
+                            cand = self.redis_store.get_memory(cand_id)
+                            cand_speaker = ((cand or {}).get('speaker') or '').strip().lower()
+                            if cand_speaker and cand_speaker != new_speaker:
+                                continue
+                            duplicate_id = cand_id
+                            break
+                        else:
+                            logger.info(
+                                "Near-duplicate kept separate: no candidate shares "
+                                "speaker %r", new_speaker
+                            )
+                            return None
 
                 # Two recountings of the SAME KIND of event on DIFFERENT dates are two
                 # events, not a duplicate. Merging them is not a harmless space saving:
