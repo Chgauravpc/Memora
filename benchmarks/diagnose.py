@@ -76,6 +76,121 @@ def load_records(results_dir: Path) -> List[Dict[str, Any]]:
     return out
 
 
+def audit_abstentions(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Find answers the judge credited even though the reader refused to answer.
+
+    WHY THIS MATTERS MORE THAN ANY OTHER CHECK HERE
+
+    On LoCoMo category 5 (adversarial) the gold answer says the information is absent, so
+    a refusal IS the correct answer and the judge is instructed to accept it. On every
+    other category the gold states a fact, and a refusal cannot be correct.
+
+    So a non-adversarial question that was ABSTAINED and marked CORRECT is a judge error,
+    and it inflates the headline score. A scorecard showing high abstention alongside a
+    high judge score in the same category -- with token-F1 near zero -- is the exact
+    signature. Since this check can only ever LOWER the reported number, it is worth
+    running before quoting one.
+
+    The reverse is also reported: adversarial questions where the reader correctly refused
+    and the judge marked it wrong, which understates the score.
+    """
+    inflated: List[Dict[str, Any]] = []
+    understated: List[Dict[str, Any]] = []
+    per_cat: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+    for r in records:
+        cat = r.get("category")
+        name = r.get("category_name", "?")
+        abstained = bool(r.get("abstained"))
+        correct = r.get("judge_correct")
+        gold = (r.get("gold") or "").strip()
+
+        per_cat[name]["n"] += 1
+        if abstained:
+            per_cat[name]["abstained"] += 1
+        if correct:
+            per_cat[name]["correct"] += 1
+
+        if abstained and correct and cat != 5:
+            per_cat[name]["abstained_but_correct"] += 1
+            inflated.append(r)
+        if cat == 5 and abstained and correct is False:
+            understated.append(r)
+
+    graded = [r for r in records if r.get("judge_correct") is not None]
+    n_correct = sum(1 for r in graded if r.get("judge_correct"))
+    adjusted = n_correct - len(inflated)
+
+    return {
+        "graded": len(graded),
+        "correct": n_correct,
+        "inflated": inflated,
+        "understated": understated,
+        "per_category": per_cat,
+        "reported_score": (n_correct / len(graded)) if graded else None,
+        # Lower bound: every credited refusal outside adversarial treated as wrong.
+        "floor_score": (adjusted / len(graded)) if graded else None,
+    }
+
+
+def render_audit(a: Dict[str, Any], show: int = 4) -> str:
+    L: List[str] = []
+    L.append("=" * 70)
+    L.append("Judge audit - refusals credited as correct")
+    L.append("=" * 70)
+
+    if not a["graded"]:
+        L.append("no graded questions found")
+        return "\n".join(L)
+
+    L.append(f"graded questions : {a['graded']}")
+    L.append(f"judged correct   : {a['correct']}")
+    L.append("")
+    L.append(f"  reported score            : {a['reported_score']:.1%}")
+    L.append(f"  floor (credited refusals  : {a['floor_score']:.1%}")
+    L.append(f"    outside adversarial = 0)")
+    L.append("")
+    L.append(f"  refusals credited outside adversarial : {len(a['inflated'])}")
+    L.append(f"  adversarial refusals marked wrong     : {len(a['understated'])}")
+    L.append("")
+
+    L.append(f"    {'category':<16}{'n':>4}{'abstain':>9}{'correct':>9}{'abs+corr':>10}")
+    for cat, c in sorted(a["per_category"].items()):
+        L.append(f"    {cat:<16}{c['n']:>4}{c['abstained']:>9}{c['correct']:>9}"
+                 f"{c.get('abstained_but_correct', 0):>10}")
+    L.append("")
+
+    if a["inflated"]:
+        L.append("-" * 70)
+        L.append("CREDITED REFUSALS  (gold states a fact; the reader refused; judge said correct)")
+        L.append("-" * 70)
+        for r in a["inflated"][:show]:
+            L.append(f"  [{r.get('category_name')}] {r.get('question')}")
+            L.append(f"    gold      : {r.get('gold')}")
+            L.append(f"    predicted : {(r.get('prediction') or '')[:120]}")
+            L.append("")
+        L.append("  Each of these is a judge error that RAISES the reported score.")
+        L.append("  Quote the floor, or fix the judge prompt and re-grade.")
+    else:
+        L.append("  No refusals were credited outside adversarial - the judge is not")
+        L.append("  inflating the score through this path.")
+
+    if a["understated"]:
+        L.append("")
+        L.append("-" * 70)
+        L.append("ADVERSARIAL REFUSALS MARKED WRONG  (these LOWER the reported score)")
+        L.append("-" * 70)
+        for r in a["understated"][:show]:
+            L.append(f"  {r.get('question')}")
+            L.append(f"    gold      : {r.get('gold')}")
+            L.append(f"    predicted : {(r.get('prediction') or '')[:120]}")
+            L.append("")
+        L.append("  On adversarial the gold says the information is absent, so a refusal")
+        L.append("  should be CORRECT. If these look like proper refusals, the judge")
+        L.append("  prompt is not recognising the gold as an absence statement.")
+    return "\n".join(L)
+
+
 def analyse(records: List[Dict[str, Any]], present_threshold: float = 0.5) -> Dict[str, Any]:
     have_ctx = [r for r in records if "context" in r]
     wrong = [r for r in have_ctx if not r.get("judge_correct")]
@@ -212,10 +327,18 @@ def main() -> int:
         print("no question records found")
         return 1
 
+    # The judge audit runs first and needs no saved contexts, so it works on any results
+    # directory. It is the check most likely to reduce the headline number, which is
+    # exactly why it should not be optional.
+    audit = render_audit(audit_abstentions(records), show=args.show)
+    print(audit)
+    print()
+
     text = render(analyse(records, args.threshold), show=args.show, category=args.category)
     print(text)
+
     out = args.results / "diagnosis.txt"
-    out.write_text(text, encoding="utf-8")
+    out.write_text(audit + "\n\n" + text, encoding="utf-8")
     print(f"\nwrote {out}")
     return 0
 
