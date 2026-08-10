@@ -42,6 +42,7 @@ def aggregate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
     turns = sessions = stage3_calls = turn_errors = 0
     ingest_seconds = qa_seconds = 0.0
     stage3_failures = 0
+    stage3_empty = 0
     memories: List[int] = []
     usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "retries": 0, "failures": 0}
     uninstrumented: List[str] = []
@@ -53,6 +54,7 @@ def aggregate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
         sessions += ing.get("sessions", 0)
         stage3_calls += ing.get("stage3_calls", 0)
         stage3_failures += ing.get("stage3_failures", 0)
+        stage3_empty += ing.get("stage3_empty", 0)
         turn_errors += ing.get("turn_errors", 0)
         ingest_seconds += ing.get("seconds", 0.0)
         qa_seconds += p.get("qa", {}).get("seconds", 0.0)
@@ -123,6 +125,9 @@ def aggregate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
             "stage3_calls": stage3_calls,
             "stage3_rate": round(stage3_calls / turns, 4) if turns else None,
             "stage3_failures": stage3_failures,
+            "stage3_empty": stage3_empty,
+            "stage3_empty_rate": (round(stage3_empty / stage3_calls, 4)
+                                  if stage3_calls else None),
             "ingest_seconds": round(ingest_seconds, 1),
             "seconds_per_turn": round(ingest_seconds / turns, 3) if turns else None,
             "qa_seconds": round(qa_seconds, 1),
@@ -180,6 +185,10 @@ def render(summary: Dict[str, Any]) -> str:
         lines.append(f"  ingest turn errors  : {op['turn_errors']}")
     if op["stage3_failures"]:
         lines.append(f"  stage3 failures     : {op['stage3_failures']}")
+    empty_rate = op.get("stage3_empty_rate")
+    if empty_rate is not None:
+        lines.append(f"  stage3 returned none: {op['stage3_empty']} "
+                     f"({empty_rate:.0%} of calls)")
 
     warn = summary.get("warnings", {})
     if warn.get("vector_store_down"):
@@ -192,6 +201,13 @@ def render(summary: Dict[str, Any]) -> str:
         lines.append(f"  !! stage3 counter did not attach for: "
                      f"{', '.join(warn['stage3_uninstrumented'])} "
                      f"(escalation rate understated)")
+    if empty_rate is not None and empty_rate > 0.9 and op["stage3_calls"] > 20:
+        lines.append("")
+        lines.append(f"  !! Stage 3 returned nothing on {empty_rate:.0%} of calls.")
+        lines.append("     extract() catches every exception and returns [], so a broken")
+        lines.append("     key, response shape or parse path looks identical to 'nothing")
+        lines.append("     worth remembering'. Check logs/worker_*.log for repeated")
+        lines.append("     'Stage 3 extraction failed' lines before trusting this run.")
 
     lines.append("")
     lines.append("Note: 'judge' is LLM-as-judge (primary, comparable to published")

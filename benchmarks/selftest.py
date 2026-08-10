@@ -240,12 +240,24 @@ def test_speaker_prompt() -> None:
         return "[]"
 
     ex._call_llm = fake_call
+    ex.provider = "test"
+    # Mirror every counter __init__ sets. object.__new__ skips __init__, and extract()
+    # wraps its body in a broad `except Exception`, so a missing attribute surfaces only
+    # as a logged line while the test still reports OK. Set them all, then assert the
+    # call actually SUCCEEDED -- otherwise this check silently stops covering the
+    # post-parse path it is supposed to cover.
+    ex.extraction_count = 0
     ex.escalation_count = 0
     ex.api_call_count = 0
     ex.total_response_time_ms = 0.0
-    ex.provider = "test"
+    ex.key_rotation_count = 0
 
-    ex.extract("I went to the museum", 1, speaker="Melanie", event_date="8 May, 2023")
+    out = ex.extract("I went to the museum", 1,
+                     speaker="Melanie", event_date="8 May, 2023")
+    check("extraction completes without swallowing an exception",
+          out == [] and ex.api_call_count == 1,
+          "extract() catches everything, so a silent failure looks like success")
+
     p = captured.get("prompt", "")
     check("names the speaker", "Melanie" in p)
     check("forbids generic user keys", "user_name" in p)

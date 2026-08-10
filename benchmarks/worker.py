@@ -50,6 +50,15 @@ class Stage3Counter:
     def __init__(self) -> None:
         self.calls = 0
         self.failures = 0
+        # Calls that returned nothing. `failures` only sees exceptions that ESCAPE
+        # extract(), and extract() wraps its whole body in `except Exception` -- so a
+        # systematic Stage 3 breakage (bad key, changed response shape, a typo in the
+        # post-parse path) is logged once per turn and otherwise looks exactly like
+        # "this turn had nothing worth remembering". At ~80% escalation that is the
+        # difference between a working run and an empty store, and nothing in the
+        # scorecard would distinguish them. An empty rate near 100% means broken, not
+        # uneventful.
+        self.empty = 0
 
     def attach(self, memory_system: Any) -> bool:
         extractor = getattr(getattr(memory_system, "extractor", None), "llm_extractor", None)
@@ -61,7 +70,10 @@ class Stage3Counter:
         def counting_extract(*args: Any, **kwargs: Any) -> Any:
             self.calls += 1
             try:
-                return original(*args, **kwargs)
+                result = original(*args, **kwargs)
+                if not result:
+                    self.empty += 1
+                return result
             except Exception as exc:  # noqa: BLE001
                 # A dead Stage 3 must not abort a multi-hour replay. Losing one turn's
                 # LLM extraction degrades recall for that turn only; the count is
@@ -337,8 +349,12 @@ def run_conversation(
             "turn_errors": turn_errors,
             "extracted_total": extracted_total,
             "stage3_calls": ingest_stage3_calls,
-            "stage3_rate": round(ingest_stage3_calls / max(len(conv.turns), 1), 4),
+            # Denominator is turns actually processed, not the conversation length --
+            # --max-turns and --reuse-store make those differ and would understate it.
+            "stage3_rate": round(ingest_stage3_calls / max(len(turns), 1), 4),
             "stage3_failures": counter.failures,
+            "stage3_empty": counter.empty,
+            "stage3_empty_rate": round(counter.empty / max(ingest_stage3_calls, 1), 4),
             "stage3_instrumented": instrumented,
             "memories_in_store": total_memories,
         },
