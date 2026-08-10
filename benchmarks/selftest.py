@@ -270,6 +270,62 @@ def test_speaker_prompt() -> None:
           "conversation between several people" not in p2)
 
 
+def test_results_roundtrip() -> None:
+    """The diagnose reader must find rows the worker actually writes.
+
+    diagnose.py originally read a "questions" key the worker never produces, so every
+    invocation printed "no question records found" -- indistinguishable from a run that
+    had not happened. Writing a payload shaped like the worker's and reading it back
+    pins the contract between the two modules.
+    """
+    print("\nresults reader/writer contract")
+    import json
+    import tempfile
+    from pathlib import Path
+    from benchmarks.diagnose import audit_abstentions, load_records
+
+    tmp = Path(tempfile.mkdtemp())
+    raw = tmp / "raw"
+    raw.mkdir()
+    (raw / "conv-1.json").write_text(json.dumps({
+        "sample_id": "conv-1",
+        "config": {"profile": "conversation"},
+        "ingest": {"turns": 419, "stage3_calls": 337},
+        "qa": {"count": 2, "seconds": 12.0},
+        "records": [
+            {"question": "Where?", "gold": "Seattle", "prediction": "Seattle",
+             "category": 4, "category_name": "single_hop", "judge_correct": True,
+             "abstained": False},
+            {"question": "Her car?", "gold": "Not mentioned", "prediction": "NO_ANSWER",
+             "category": 5, "category_name": "adversarial", "judge_correct": False,
+             "abstained": True},
+        ],
+    }), encoding="utf-8")
+
+    recs = load_records(tmp)
+    check("reads the worker's 'records' key", len(recs) == 2,
+          "this mismatch made diagnose report an empty run")
+    check("stamps the sample id", recs[0].get("_sample") == "conv-1")
+
+    a = audit_abstentions(recs)
+    check("audit runs on real payload shape", a["graded"] == 2)
+    check("adversarial refusal marked wrong is reported",
+          len(a["understated"]) == 1)
+
+    # A payload with no recognised rows must raise, not silently return nothing.
+    (raw / "conv-2.json").write_text(json.dumps({"sample_id": "c2", "qa": {}}),
+                                     encoding="utf-8")
+    bad = tmp / "onlybad"
+    (bad / "raw").mkdir(parents=True)
+    (bad / "raw" / "x.json").write_text(json.dumps({"sample_id": "x", "rows": []}),
+                                        encoding="utf-8")
+    try:
+        load_records(bad)
+        check("unrecognised payload raises", False, "it returned quietly")
+    except ValueError:
+        check("unrecognised payload raises rather than reporting an empty run", True)
+
+
 def test_dataset_dates() -> None:
     print("\ndataset date parsing")
     from benchmarks.dataset import Turn
@@ -310,7 +366,7 @@ def main() -> int:
     for fn in (test_lexical, test_dedup_identity, test_context_rendering,
                test_query_intent, test_query_dates, test_always_on_floor,
                test_ranking_profiles, test_embedding_text, test_speaker_prompt,
-               test_dataset_dates, test_stratified_sampling):
+               test_results_roundtrip, test_dataset_dates, test_stratified_sampling):
         try:
             fn()
         except Exception as exc:  # noqa: BLE001

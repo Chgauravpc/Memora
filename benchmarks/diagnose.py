@@ -60,19 +60,49 @@ def gold_coverage(gold: str, context: str) -> Optional[float]:
     return hit / len(set(words))
 
 
+# The worker writes per-question rows under "records" (worker.py). This module originally
+# read "questions", which is not a key the worker produces -- so every run reported "no
+# question records found" as though the benchmark had not been run, rather than as a
+# mismatch. Both names are accepted, and an unrecognised payload now raises instead of
+# quietly yielding nothing.
+_RECORD_KEYS = ("records", "questions")
+
+
 def load_records(results_dir: Path) -> List[Dict[str, Any]]:
     raw = results_dir / "raw"
     if not raw.is_dir():
         raise FileNotFoundError(f"no results at {raw} - run the benchmark first")
+
     out: List[Dict[str, Any]] = []
-    for f in sorted(raw.glob("*.json")):
+    files = sorted(raw.glob("*.json"))
+    seen_keys: set = set()
+
+    for f in files:
         try:
             payload = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        for rec in payload.get("questions", []) or []:
+        seen_keys.update(payload.keys())
+        rows = None
+        for key in _RECORD_KEYS:
+            if isinstance(payload.get(key), list):
+                rows = payload[key]
+                break
+        if rows is None:
+            continue
+        for rec in rows:
             rec.setdefault("_sample", payload.get("sample_id", f.stem))
             out.append(rec)
+
+    if files and not out:
+        # Distinguish "the benchmark produced nothing" from "this reader is looking in the
+        # wrong place" -- they need completely different responses.
+        raise ValueError(
+            f"read {len(files)} results file(s) under {raw} but found no per-question "
+            f"rows under any of {_RECORD_KEYS}.\n"
+            f"Top-level keys present: {sorted(seen_keys)}\n"
+            f"This is a reader/writer key mismatch, not an empty run."
+        )
     return out
 
 
@@ -320,11 +350,11 @@ def main() -> int:
 
     try:
         records = load_records(args.results)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         print(exc)
         return 1
     if not records:
-        print("no question records found")
+        print(f"no results files under {args.results / 'raw'} - run the benchmark first")
         return 1
 
     # The judge audit runs first and needs no saved contexts, so it works on any results
