@@ -599,7 +599,8 @@ Carried over from BENCHMARK_PLAN.md; these bound how much the resulting number m
 | Symptom | Cause |
 |---|---|
 | `redis logical DBs: 16 but N workers` | Using stock `redis.conf`. Start via `scripts/start_backends.sh`, which applies `redis.benchmark.conf` (`databases 64`) on both the Docker and native paths. |
-| `Error 111 connecting to localhost:6379` / qdrant refused | Backends not running. `bash scripts/start_backends.sh start`, then `status`. If Docker is installed but unusable, the script falls back to user processes automatically; `docker info` failing is the tell. |
+| `Error 111 connecting to localhost:6379` / qdrant refused | Backends not running. `run_locomo.py` now starts them itself; set `BENCH_NO_AUTOSTART=1` to check and refuse instead. Manually: `bash scripts/start_backends.sh start`, then `status`. |
+| Backends up all session, gone at next login | `systemd-logind` with `KillUserProcesses=yes` kills the whole user slice at logout — `nohup` does not help, and `SIGKILL` leaves nothing in the logs. Backends now start under `setsid`. If they still die, enable lingering: `sudo loginctl enable-linger $USER`. |
 | Escalation rate ~100% | Expected off-domain. Stage 2 regexes were tuned on personal-assistant and payment phrasing. Cost impact is modest; recall impact is real. |
 | `vector store was DOWN` in scorecard | Qdrant was unreachable and those conversations ran Phase 1 only. Re-run them; do not quote the number. |
 | Model download fails | First run needs internet for MiniLM. Pre-seed `.cache/huggingface/` from another machine. |

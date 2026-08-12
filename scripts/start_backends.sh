@@ -40,6 +40,27 @@ COMPOSE_FILE="docker-compose.benchmark.yml"
 
 mkdir -p "$RUN_DIR" "$BIN_DIR" data/redis data/qdrant logs
 
+# WHY BACKENDS KEEP DYING BETWEEN SESSIONS
+#
+# `nohup ... &` blocks SIGHUP, which is enough on a normal box. It is NOT enough when
+# systemd-logind is configured with KillUserProcesses=yes -- common on managed and
+# HPC-style nodes -- because logind then kills the whole user SLICE at logout, nohup or
+# not. The symptom is exactly what we saw: backends up all session, gone next login,
+# with nothing in the logs because SIGKILL leaves no trace.
+#
+# `setsid` puts each backend in its own session and process group, detaching it from the
+# terminal's session so it is no longer swept up with it. Where logind is aggressive
+# enough to kill even that, the durable answer is a user unit:
+#
+#     systemctl --user enable --now memora-backends     (needs lingering enabled:
+#     sudo loginctl enable-linger "$USER")
+#
+# Falls back to plain nohup where setsid is unavailable.
+DETACH=""
+if command -v setsid >/dev/null 2>&1; then
+  DETACH="setsid"
+fi
+
 # ------------------------------------------------------------------ config from .env
 # Read the same variables docker-compose.benchmark.yml and src/config.py read, so all
 # three agree on ports. Parsed with sed rather than `source` because .env may legally
@@ -212,7 +233,7 @@ start_qdrant_native() {
   QDRANT__SERVICE__HTTP_PORT="$QDRANT_PORT" \
   QDRANT__SERVICE__GRPC_PORT="$QDRANT_GRPC_PORT" \
   QDRANT__TELEMETRY_DISABLED=true \
-    nohup "$BIN_DIR/qdrant" > "$REPO_ROOT/logs/qdrant.log" 2>&1 &
+    $DETACH nohup "$BIN_DIR/qdrant" > "$REPO_ROOT/logs/qdrant.log" 2>&1 &
   echo $! > "$RUN_DIR/qdrant.pid"
 }
 
@@ -259,7 +280,7 @@ start_redis_native() {
   # without which the runner cannot give each worker its own logical DB and parallelism
   # silently caps at 16. CLI flags after the config file override it, so port and dir are
   # applied on top of the shared config rather than duplicated into it.
-  nohup "$bin" "$REPO_ROOT/redis.benchmark.conf" \
+  $DETACH nohup "$bin" "$REPO_ROOT/redis.benchmark.conf" \
       --port "$REDIS_PORT" \
       --dir "$REPO_ROOT/data/redis" \
       --daemonize no \

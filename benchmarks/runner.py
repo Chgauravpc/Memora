@@ -39,6 +39,80 @@ MAX_REDIS_DBS = int(os.getenv("BENCH_MAX_REDIS_DBS", "16"))
 HEARTBEAT_SECONDS = int(os.getenv("BENCH_HEARTBEAT_SECONDS", "30"))
 
 
+def backends_up() -> tuple:
+    """(redis_ok, qdrant_ok). Never raises."""
+    redis_ok = qdrant_ok = False
+    try:
+        import redis as _redis
+        from src.config import REDIS_HOST, REDIS_PORT
+        _redis.Redis(host=REDIS_HOST, port=REDIS_PORT,
+                     socket_connect_timeout=2).ping()
+        redis_ok = True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from qdrant_client import QdrantClient
+        from src.config import QDRANT_HOST, QDRANT_PORT
+        QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT,
+                     timeout=3).get_collections()
+        qdrant_ok = True
+    except Exception:  # noqa: BLE001
+        pass
+    return redis_ok, qdrant_ok
+
+
+def ensure_backends() -> bool:
+    """Start Redis and Qdrant if they are not reachable.
+
+    Worth doing automatically rather than failing with instructions. A dead backend does
+    not just stop the run: Memora catches a missing Qdrant and degrades to Phase 1
+    retrieval with a log warning, so a benchmark started against a half-up stack produces
+    plausible, meaningless numbers. Checking here makes that impossible, and starting
+    them removes a failure that otherwise costs a full round trip every session.
+
+    Set BENCH_NO_AUTOSTART=1 to check and refuse instead of starting.
+    """
+    redis_ok, qdrant_ok = backends_up()
+    if redis_ok and qdrant_ok:
+        return True
+
+    down = [n for n, ok in (("redis", redis_ok), ("qdrant", qdrant_ok)) if not ok]
+    print(f"backends down: {', '.join(down)}")
+
+    if os.getenv("BENCH_NO_AUTOSTART", "").strip().lower() in ("1", "true", "yes"):
+        print("BENCH_NO_AUTOSTART set; not starting them. Run:")
+        print("    bash scripts/start_backends.sh start")
+        return False
+
+    script = REPO_ROOT / "scripts" / "start_backends.sh"
+    if not script.is_file():
+        print(f"cannot autostart: {script} not found")
+        return False
+
+    print(f"starting them ({script.name})...")
+    try:
+        proc = subprocess.run(["bash", str(script), "start"], cwd=str(REPO_ROOT),
+                              capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"autostart failed to run: {exc}")
+        return False
+
+    for line in (proc.stdout or "").splitlines():
+        print(f"  | {line}")
+
+    redis_ok, qdrant_ok = backends_up()
+    if redis_ok and qdrant_ok:
+        print("backends up")
+        return True
+
+    still = [n for n, ok in (("redis", redis_ok), ("qdrant", qdrant_ok)) if not ok]
+    print(f"\nSTILL DOWN: {', '.join(still)}")
+    print((proc.stderr or "")[-1200:])
+    print("Refusing to run: without Qdrant, Memora degrades to Phase 1 retrieval")
+    print("silently and the resulting scores would be meaningless.")
+    return False
+
+
 def _tail(path: Path, n: int) -> List[str]:
     """Last n non-blank lines of a file, or [] if unreadable.
 
@@ -124,6 +198,9 @@ def run(
 ) -> int:
     ensure_dirs()
     extra_args = extra_args or []
+
+    if not ensure_backends():
+        return 1
 
     if workers > MAX_REDIS_DBS:
         print(f"warning: {workers} workers requested but only {MAX_REDIS_DBS} Redis DBs "
