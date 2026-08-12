@@ -100,6 +100,13 @@ def _reset_user_dir(user_id: str) -> None:
         shutil.rmtree(user_dir, ignore_errors=True)
 
 
+def _reader_version() -> str:
+    try:
+        return qa_mod.READER_PROMPT_VERSION
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
 def _architecture_snapshot() -> Dict[str, Any]:
     """Which memory-architecture mechanisms were active for this run.
 
@@ -112,6 +119,11 @@ def _architecture_snapshot() -> Dict[str, Any]:
         return {"profile": "unknown"}
     return {
         "profile": getattr(c, "MEMORA_PROFILE", "unknown"),
+        # Extraction temperature and reader version both move the score and both were
+        # varying silently across runs. A results file that does not name them cannot be
+        # compared to another one.
+        "stage3_temperature": getattr(c, "STAGE_3_TEMPERATURE", None),
+        "reader_prompt": _reader_version(),
         "ranking_weights": dict(getattr(c, "RANKING_WEIGHTS_5_SIGNAL", {})),
         "lexical_search": getattr(c, "LEXICAL_SEARCH_ENABLED", None),
         "chronological_context": getattr(c, "CONTEXT_CHRONOLOGICAL", None),

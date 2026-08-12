@@ -208,7 +208,13 @@ GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else None  # Backward compatibi
 
 STAGE_3_CONFIDENCE_THRESHOLD = 0.7  # Escalate to LLM if Stage 2 < this
 STAGE_3_MAX_TOKENS = 500  # Max tokens for LLM extraction response (increased to prevent JSON cutoffs)
-STAGE_3_TEMPERATURE = 0.1  # Low temperature for consistent extraction
+# 0.0, not 0.1. "Low" is not the same as reproducible: at 0.1 two ingests of the same
+# conversation produce DIFFERENT stores, so any A/B that re-ingests is comparing a change
+# plus a fresh sample of extraction noise. That confound is not small -- a 25-question
+# slice swung 64% -> 32% across two runs where both the reader prompt and the store had
+# changed, and the store difference alone moved mean gold-word coverage from 65% to 42%.
+# Determinism is worth more here than whatever diversity 0.1 was buying.
+STAGE_3_TEMPERATURE = float(os.getenv("STAGE_3_TEMPERATURE", "0.0"))
 
 # Stage 3 retry policy (rate limits / transient upstream errors).
 # Attempts are floored at STAGE_3_MAX_ATTEMPTS regardless of how many API keys are

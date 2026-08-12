@@ -309,20 +309,27 @@ def test_reader_prompt() -> None:
     os.environ.pop("BENCH_READER_PROMPT", None)
     qa = importlib.reload(qa)
     p = qa.READER_SYSTEM
-    check("v2 is the default", "HOW TO READ THE CONTEXT" in p)
+    check("v3 is the default", qa.READER_PROMPT_VERSION == "v3")
+    check("explains the context format", "HOW TO READ THE CONTEXT" in p)
     check("explains that the bracketed date is when it was said",
           "WHEN IT WAS SAID" in p,
           "the camping failure came from two dates with no stated relationship")
     check("tells the reader a date inside the value can be the answer",
           "inside the value" in p)
     check("counterweights the refusal instruction",
-          "Partial evidence still beats refusing" in p)
+          "expected and correct" in p)
     check("still constrains verbosity", "terse" in p.lower())
+    check("drops the attribution prohibition that doubled abstentions",
+          "do not transfer it" not in p,
+          "present in v2, which scored 32% with abstentions 8 -> 16")
 
-    os.environ["BENCH_READER_PROMPT"] = "v1"
-    qa = importlib.reload(qa)
-    check("v1 remains available for A/B",
-          "HOW TO READ THE CONTEXT" not in qa.READER_SYSTEM)
+    for ver, marker in (("v1", "HOW TO READ THE CONTEXT"),
+                        ("v2", "do not transfer it")):
+        os.environ["BENCH_READER_PROMPT"] = ver
+        qa = importlib.reload(qa)
+        present = marker in qa.READER_SYSTEM
+        check(f"{ver} is selectable for A/B",
+              qa.READER_PROMPT_VERSION == ver and (present if ver == "v2" else not present))
     os.environ.pop("BENCH_READER_PROMPT", None)
     importlib.reload(qa)
 

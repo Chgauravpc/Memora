@@ -81,9 +81,56 @@ HOW TO ANSWER
   refuse merely because the context is indirect, incomplete, or differently worded.
 """
 
-READER_SYSTEM = (READER_SYSTEM_V1
-                 if os.getenv("BENCH_READER_PROMPT", "v2").strip().lower() == "v1"
-                 else READER_SYSTEM_V2)
+# V3 = V2 minus the attribution prohibition.
+#
+# V2 scored 32% against V1's 64% on the same 25 questions, with abstentions DOUBLING from
+# 8 to 16 -- the opposite of its intent. That comparison is confounded (the store was
+# rebuilt at a nonzero extraction temperature, and mean gold-word coverage fell 65% -> 42%
+# on its own), so V2 is not proven guilty. But within V2 there is exactly one instruction
+# that ADDS a reason to refuse where V1 had none:
+#
+#     "If the question asks about one person and the context only supports it for
+#      another, do not transfer it."
+#
+# That was my own addition, based on reasoning rather than measurement, and abstention
+# rising is the specific behaviour it would produce. Deciding a question is unanswerable
+# because its premise looks wrong is the judge's call, not the reader's -- a reader should
+# report what the context supports and let grading settle the rest.
+#
+# V3 keeps the parts aimed at a demonstrated failure (the format is now explained; the
+# bracketed date is the utterance date while the asked-about date sits in the value) and
+# drops the part aimed at a hypothetical one. All three remain selectable so the A/B is
+# reproducible.
+READER_SYSTEM_V3 = """\
+You answer questions about a long-running conversation, using ONLY the MEMORY CONTEXT.
+
+HOW TO READ THE CONTEXT
+Each line is one remembered fact:
+    - [date] Speaker - key: value (type)
+and may be followed by `said: "..."`, the original sentence it came from.
+  * `Speaker` is who said it.
+  * The `[date]` is WHEN IT WAS SAID -- not necessarily when the thing happened.
+  * A date inside the value (e.g. "camping trip: June 2023") is when that thing happens
+    or happened. For "when" questions this is usually the answer, NOT the bracketed date.
+  * `said:` quotes are the most reliable evidence; prefer them when they conflict with a
+    compressed value.
+
+HOW TO ANSWER
+- Give your best answer whenever the context supports one -- including when you must
+  combine two facts, or when the wording differs from the question.
+- Answering from indirect or partial evidence is expected and correct. Do not refuse
+  because the context is incomplete, differently worded, or only implies the answer.
+- Be terse: a word, a name, a date, or a short phrase. No explanation, no sentences.
+- Reply exactly NO_ANSWER only when the context contains nothing at all on the subject.
+"""
+
+_READER_PROMPTS = {
+    "v1": READER_SYSTEM_V1,
+    "v2": READER_SYSTEM_V2,
+    "v3": READER_SYSTEM_V3,
+}
+READER_PROMPT_VERSION = os.getenv("BENCH_READER_PROMPT", "v3").strip().lower()
+READER_SYSTEM = _READER_PROMPTS.get(READER_PROMPT_VERSION, READER_SYSTEM_V3)
 
 READER_TEMPLATE = """\
 MEMORY CONTEXT
