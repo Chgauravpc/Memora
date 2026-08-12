@@ -15,6 +15,7 @@ if the judge and F1 disagree wildly, distrust the judge before the system.
 
 from __future__ import annotations
 
+import os
 import re
 import string
 from collections import Counter
@@ -23,7 +24,7 @@ from typing import Optional
 
 from .llm import LLMClient
 
-READER_SYSTEM = """\
+READER_SYSTEM_V1 = """\
 You are answering questions about a long-running conversation between two people, using \
 only the MEMORY CONTEXT provided.
 
@@ -32,6 +33,57 @@ Rules:
 - Be terse: a word, a name, a date, or a short phrase. No explanation, no full sentences.
 - If the memory context does not contain the answer, reply exactly: NO_ANSWER
 """
+
+# V2 exists because measurement said the reader, not retrieval, had become the bottleneck:
+# 7 of 9 wrong answers had the gold answer present in the context (65% mean gold-word
+# coverage) and the reader refused anyway. The clearest single case:
+#
+#   context : - [1:14 pm on 25 May, 2023] Melanie - camping trip: June 2023 (event)
+#   question: When is Melanie planning on going camping?
+#   answer  : NO_ANSWER          <- "June 2023" is verbatim in the line
+#
+# Three defects in V1 produced that, and each gets an explicit rule below.
+#
+#   1. V1 never describes the context format. The reader is handed a timeline of
+#      "[date] Speaker - key: value (type)" rows plus optional `said:` quotes and has to
+#      guess what any of it means.
+#   2. V1 gives no date semantics. The bracketed date is when the statement was MADE; the
+#      date being ASKED about is often inside the value ("camping trip: June 2023"). Two
+#      dates in one row, with no stated relationship, reads as contradictory -- and a
+#      cautious reader resolves contradictions by refusing.
+#   3. V1's only instruction about uncertainty is when to say NO_ANSWER, with nothing
+#      pushing the other way. That is a one-sided prompt, and it produced one-sided
+#      behaviour.
+#
+# This is a change to the benchmark's answering component, not to the memory system, and
+# must be reported alongside any score. BENCH_READER_PROMPT=v1 restores the original.
+READER_SYSTEM_V2 = """\
+You answer questions about a long-running conversation, using ONLY the MEMORY CONTEXT.
+
+HOW TO READ THE CONTEXT
+Each line is one remembered fact:
+    - [date] Speaker - key: value (type)
+and may be followed by `said: "..."`, the original sentence it came from.
+  * `Speaker` is who said it.
+  * The `[date]` is WHEN IT WAS SAID -- not necessarily when the thing happened.
+  * A date inside the value (e.g. "camping trip: June 2023") is when that thing happens
+    or happened. For "when" questions this is usually the answer, NOT the bracketed date.
+  * `said:` quotes are the most reliable evidence; prefer them when they conflict with a
+    compressed value.
+
+HOW TO ANSWER
+- Answer if the context supports an answer -- including when you must combine two facts,
+  or when the wording differs from the question. Partial evidence still beats refusing.
+- Attribute carefully. A fact belongs to the Speaker it is listed under. If the question
+  asks about one person and the context only supports it for another, do not transfer it.
+- Be terse: a word, a name, a date, or a short phrase. No explanation, no sentences.
+- Reply exactly NO_ANSWER only when nothing in the context bears on the question. Do not
+  refuse merely because the context is indirect, incomplete, or differently worded.
+"""
+
+READER_SYSTEM = (READER_SYSTEM_V1
+                 if os.getenv("BENCH_READER_PROMPT", "v2").strip().lower() == "v1"
+                 else READER_SYSTEM_V2)
 
 READER_TEMPLATE = """\
 MEMORY CONTEXT

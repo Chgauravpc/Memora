@@ -127,6 +127,36 @@ def query_entities(query: str) -> set:
     return {m.group(1).lower() for m in _CAPITALISED_RE.finditer(query or "")}
 
 
+# "1:56 pm on 8 May, 2023" -> "8 May, 2023". Time-of-day is never what a conversational
+# question asks about, and repeating it on every one of ~50 context lines crowds out the
+# part that matters. Dropped from the rendered context only; the stored field is untouched.
+_TIME_PREFIX_RE = re.compile(
+    r"^\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+on\s+", re.IGNORECASE)
+
+
+def _clean_date(raw: str) -> str:
+    return _TIME_PREFIX_RE.sub("", (raw or "").strip()).strip()
+
+
+def _strip_redundant_speaker(key: str, speaker: str) -> str:
+    """Drop a leading speaker name from a memory key.
+
+    Speaker-aware extraction is told to name the subject, so Stage 3 returns keys like
+    "Caroline current activity". Rendering already prefixes the speaker, giving
+    "Caroline - Caroline current activity: ..." on every line. The duplication wastes
+    context budget and reads as though two different Carolines are involved.
+    """
+    if not key or not speaker:
+        return key
+    first = speaker.split()[0].lower()
+    for candidate in (speaker.lower(), first):
+        if candidate and key.lower().startswith(candidate + " "):
+            return key[len(candidate) + 1:].lstrip("-:' ").strip() or key
+        if candidate and key.lower().startswith(candidate + "'s "):
+            return key[len(candidate) + 3:].lstrip("-:' ").strip() or key
+    return key
+
+
 def _source_date(memory: Dict) -> Optional[str]:
     """Date this memory came from, or None.
 
@@ -759,9 +789,11 @@ class MemoryRetriever:
         } if CONTEXT_EVIDENCE_TOP_N > 0 else set()
 
         def render(mem: Dict) -> str:
-            when = (mem.get('event_date') or _source_date(mem) or '').strip()
+            when = _clean_date(mem.get('event_date') or _source_date(mem) or '')
             who = str(mem.get('speaker') or '').strip()
             key = str(mem.get('key') or '').replace('_', ' ').strip()
+            if CONTEXT_INCLUDE_SPEAKER:
+                key = _strip_redundant_speaker(key, who)
             value = str(mem.get('value') or '').strip()
             mem_type = str(mem.get('type') or 'fact')
 

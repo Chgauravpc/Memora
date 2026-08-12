@@ -270,6 +270,63 @@ def test_speaker_prompt() -> None:
           "conversation between several people" not in p2)
 
 
+def test_context_noise() -> None:
+    """Two sources of context noise found by reading a real failing case."""
+    print("\ncontext noise reduction")
+    r = _reload("conversation")
+
+    check("strips time-of-day from dates",
+          r._clean_date("1:56 pm on 8 May, 2023") == "8 May, 2023")
+    check("leaves a plain date alone",
+          r._clean_date("8 May, 2023") == "8 May, 2023")
+    check("handles an empty date", r._clean_date("") == "")
+
+    check("drops a duplicated speaker from the key",
+          r._strip_redundant_speaker("Caroline current activity", "Caroline")
+          == "current activity")
+    check("handles the possessive form",
+          r._strip_redundant_speaker("Melanie's children", "Melanie") == "children")
+    check("leaves an unrelated key intact",
+          r._strip_redundant_speaker("camping trip", "Melanie") == "camping trip")
+    check("never returns an empty key",
+          r._strip_redundant_speaker("Caroline", "Caroline") == "Caroline")
+
+    mems = [{"memory_id": "m", "type": "event", "key": "Melanie camping trip",
+             "value": "June 2023", "confidence": 0.9, "turn_number": 10,
+             "speaker": "Melanie", "event_date": "1:14 pm on 25 May, 2023",
+             "event_ts": 0.0, "retrieval_score": 0.9, "source_text": ""}]
+    out = r.MemoryRetriever.format_memories_for_prompt(
+        object.__new__(r.MemoryRetriever), mems)
+    check("rendered line is clean", "1:14 pm" not in out and "Melanie - camping trip" in out,
+          out.strip())
+
+
+def test_reader_prompt() -> None:
+    print("\nreader prompt")
+    import importlib
+    import benchmarks.qa as qa
+
+    os.environ.pop("BENCH_READER_PROMPT", None)
+    qa = importlib.reload(qa)
+    p = qa.READER_SYSTEM
+    check("v2 is the default", "HOW TO READ THE CONTEXT" in p)
+    check("explains that the bracketed date is when it was said",
+          "WHEN IT WAS SAID" in p,
+          "the camping failure came from two dates with no stated relationship")
+    check("tells the reader a date inside the value can be the answer",
+          "inside the value" in p)
+    check("counterweights the refusal instruction",
+          "Partial evidence still beats refusing" in p)
+    check("still constrains verbosity", "terse" in p.lower())
+
+    os.environ["BENCH_READER_PROMPT"] = "v1"
+    qa = importlib.reload(qa)
+    check("v1 remains available for A/B",
+          "HOW TO READ THE CONTEXT" not in qa.READER_SYSTEM)
+    os.environ.pop("BENCH_READER_PROMPT", None)
+    importlib.reload(qa)
+
+
 def test_results_roundtrip() -> None:
     """The diagnose reader must find rows the worker actually writes.
 
@@ -366,6 +423,7 @@ def main() -> int:
     for fn in (test_lexical, test_dedup_identity, test_context_rendering,
                test_query_intent, test_query_dates, test_always_on_floor,
                test_ranking_profiles, test_embedding_text, test_speaker_prompt,
+               test_context_noise, test_reader_prompt,
                test_results_roundtrip, test_dataset_dates, test_stratified_sampling):
         try:
             fn()
