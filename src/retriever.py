@@ -16,6 +16,8 @@ from .lexical_index import (
 )
 from .config import (
     ALWAYS_ON_SEMANTIC_FLOOR,
+    BM25_B,
+    BM25_K1,
     CONTEXT_CHRONOLOGICAL,
     DATE_MATCH_BOOST,
     CONTEXT_EVIDENCE_MAX_CHARS,
@@ -222,7 +224,7 @@ class MemoryRetriever:
                 if self.user_id:
                     memories = [m for m in memories
                                 if not m.get('user_id') or m.get('user_id') == self.user_id]
-                self._bm25 = BM25Index().build(memories)
+                self._bm25 = BM25Index(k1=BM25_K1, b=BM25_B).build(memories)
                 self._bm25_size = size
                 logger.debug("Rebuilt lexical index over %d memories", len(self._bm25))
             return self._bm25.search(query, limit=limit)

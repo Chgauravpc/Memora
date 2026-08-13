@@ -382,6 +382,23 @@ EMBED_NATURAL_TEXT = _flag("EMBED_NATURAL_TEXT", _CONV)
 LEXICAL_SEARCH_ENABLED = _flag("LEXICAL_SEARCH_ENABLED", _CONV)
 LEXICAL_SEARCH_LIMIT = int(os.getenv("LEXICAL_SEARCH_LIMIT", "100"))
 RRF_K = int(os.getenv("RRF_K", "60"))  # standard RRF damping constant
+
+# Okapi BM25 parameters.
+#
+# k1 controls TERM-FREQUENCY SATURATION. At the textbook 1.2-2.0 the third occurrence of a
+# word adds much less than the first, which is what stops a document that merely repeats a
+# query term from beating one that is actually about it. As k1 grows the curve straightens
+# toward raw term frequency: k1=50 is effectively "no saturation".
+#
+# Set to 50 on request. Worth knowing what that does to THIS corpus: memories are short
+# (a key, a value, one source sentence), so term counts are nearly all 0 or 1 and
+# saturation rarely binds -- which limits both the harm and the benefit. Where it will
+# show is long `source_text` fields, whose repeated words now scale linearly and can
+# outrank a short, exactly-matching memory.
+#
+# b controls length normalisation (1.0 = full, 0.0 = none). Left at the standard 0.75.
+BM25_K1 = float(os.getenv("BM25_K1", "50.0"))
+BM25_B = float(os.getenv("BM25_B", "0.75"))
 FUSION_WEIGHT_DENSE = float(os.getenv("FUSION_WEIGHT_DENSE", "1.0"))
 FUSION_WEIGHT_LEXICAL = float(os.getenv("FUSION_WEIGHT_LEXICAL", "1.0"))
 

@@ -85,6 +85,20 @@ def test_lexical() -> None:
           idx.search("quantum chromodynamics") == [])
     check("empty index does not raise", BM25Index().build([]).search("x") == [])
 
+    # k1 is configurable and currently set high (50), which flattens term-frequency
+    # saturation. Ranking must still be sane at that setting, and the parameter must
+    # actually reach the index rather than silently defaulting.
+    _reload("conversation")
+    from src.config import BM25_K1, BM25_B
+    from src.retriever import MemoryRetriever  # noqa: F401  (import path check)
+    hi = BM25Index(k1=BM25_K1, b=BM25_B).build(MEMS)
+    check(f"index accepts the configured k1 ({BM25_K1})", hi.k1 == BM25_K1)
+    hits_hi = hi.search("Ravensbourne", limit=3)
+    check("rare proper noun still ranks first at the configured k1",
+          bool(hits_hi) and hits_hi[0][0] == "m1")
+    check("high k1 does not produce negative or nan scores",
+          all(s > 0 and s == s for _, s in hits_hi))
+
     fused = reciprocal_rank_fusion([(["a", "b", "c"], 1.0), (["b", "a", "d"], 1.0)], k=60)
     check("agreed-on item beats single-channel item", fused["b"] > fused["c"])
     check("normalisation puts the top hit at 1.0",
