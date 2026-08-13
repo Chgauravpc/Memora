@@ -314,6 +314,68 @@ class MemoryExtractor:
         # Clamp to [0, 1]
         return max(0.0, min(1.0, confidence))
     
+    # Explicit temporal expressions. Deliberately narrow: only forms whose meaning is
+    # unambiguous without parsing the sentence. A wrong date is worse than a missing one,
+    # because it turns an abstention into a confident error.
+    _TEMPORAL_PATTERNS = [
+        # Four-digit years, but only ones a person would plausibly reference. An
+        # unanchored \d{4} also matches quantities, model numbers and street numbers.
+        r'\b(?:in|since|back in|around|during|from)\s+((?:19|20)\d{2})\b',
+        # Explicit day-month or month-day, with or without a year.
+        r'\b(\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september'
+        r'|october|november|december)(?:\s+(?:19|20)\d{2})?)\b',
+        r'\b((?:january|february|march|april|may|june|july|august|september|october'
+        r'|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+(?:19|20)\d{2})?)\b',
+        # Bare month + year.
+        r'\b((?:january|february|march|april|may|june|july|august|september|october'
+        r'|november|december)\s+(?:19|20)\d{2})\b',
+        # Explicit elapsed time. "3 years ago" is resolvable; "recently" is not, and is
+        # therefore excluded.
+        r'\b(\d+\s+(?:day|week|month|year)s?\s+ago)\b',
+    ]
+
+    def _enrich_temporal(self, memories: List[Dict], message: str) -> List[Dict]:
+        """Append explicit dates from the source text to values that lost them.
+
+        Only fires when the source states a date and the extracted value does not already
+        contain it, so it cannot overwrite a date the model got right, and cannot invent
+        one that was never said.
+        """
+        if not memories:
+            return memories
+
+        body = message
+        # Drop any "[date] Speaker:" prefix a caller folded in -- that is the UTTERANCE
+        # date, already carried in event_date. Treating it as content would stamp every
+        # memory with the day it was mentioned instead of the day it refers to, which is
+        # precisely the confusion this is meant to remove.
+        body = re.sub(r'^\s*\[[^\]]{3,40}\]\s*', '', body)
+        body = re.sub(r'^\s*[A-Z][\w .\'-]{0,40}:\s*', '', body)
+
+        found: List[str] = []
+        lowered = body.lower()
+        for pattern in self._TEMPORAL_PATTERNS:
+            for match in re.finditer(pattern, lowered, re.IGNORECASE):
+                text = match.group(1).strip()
+                if text and text not in found:
+                    found.append(text)
+        if not found:
+            return memories
+
+        for mem in memories:
+            value = str(mem.get('value') or '')
+            value_low = value.lower()
+            missing = [t for t in found if t not in value_low]
+            if not missing:
+                continue
+            # One date per memory: appending several to a value that mentions none of
+            # them guesses at which applies, and a wrong date is worse than no date.
+            if len(found) == 1:
+                mem['value'] = f"{value} ({missing[0]})".strip()
+                mem['temporal_enriched'] = True
+
+        return memories
+
     def _create_memory(
         self,
         memory_type: str,
@@ -414,6 +476,23 @@ class MemoryExtractor:
         else:
             memories = stage2_memories
         
+        # Restore temporal detail the LLM dropped.
+        #
+        # This runs AFTER the escalation decision on purpose. The tempting version of
+        # "improve the deterministic layer" is to make Stage 2 fire more often so fewer
+        # turns reach the LLM -- but escalation is gated on Stage 2 returning nothing or
+        # scoring below threshold, so a more eager Stage 2 SUPPRESSES the better
+        # extractor and substitutes cruder output. Given that the measured failure mode
+        # is facts never captured, that trade loses.
+        #
+        # So this adds nothing to the gate and takes nothing away from it. It only
+        # repairs a specific, measurable loss: the LLM compresses "I painted a lake
+        # sunrise back in 2022" to `painting title: lake sunrise` and drops the year, so
+        # "when did she paint it" becomes unanswerable from a memory that otherwise has
+        # the right subject. Dates are highly regular, so a regex recovers them at far
+        # higher precision than a paraphrasing model retains them.
+        memories = self._enrich_temporal(memories, message)
+
         # Stamp conversation provenance onto everything both stages produced.
         #
         # Done once here rather than threaded through every _create_memory call site and

@@ -284,6 +284,45 @@ def test_speaker_prompt() -> None:
           "conversation between several people" not in p2)
 
 
+def test_temporal_enrichment() -> None:
+    """Deterministic recovery of dates the LLM compressed away."""
+    print("\ndeterministic temporal enrichment")
+    _reload("conversation")
+    from src.extractor import MemoryExtractor
+
+    ex = object.__new__(MemoryExtractor)
+    enrich = lambda mems, msg: MemoryExtractor._enrich_temporal(ex, mems, msg)  # noqa: E731
+
+    # The measured failure: gold was 2022, the value kept only the subject.
+    out = enrich([{"value": "lake sunrise", "key": "painting title"}],
+                 "[8 May, 2023] Melanie: I painted a lake sunrise back in 2022")
+    check("recovers a year the value lost", "2022" in out[0]["value"],
+          out[0]["value"])
+
+    # The utterance-date prefix must not be mistaken for content -- otherwise every
+    # memory gets stamped with the day it was mentioned.
+    check("ignores the [utterance date] prefix", "2023" not in out[0]["value"],
+          out[0]["value"])
+
+    unchanged = enrich([{"value": "camping trip June 2023", "key": "trip"}],
+                       "We're going camping in June 2023")
+    check("does not duplicate a date the value already has",
+          unchanged[0]["value"].count("2023") == 1, unchanged[0]["value"])
+
+    none = enrich([{"value": "likes coffee", "key": "pref"}],
+                  "I really like coffee in the morning")
+    check("adds nothing when no date is stated", none[0]["value"] == "likes coffee")
+
+    # Ambiguity guard: several dates and no way to know which applies.
+    multi = enrich([{"value": "moved house", "key": "move"}],
+                   "I moved in 2019 and again in 2021")
+    check("refuses to guess between multiple dates",
+          multi[0]["value"] == "moved house",
+          "a wrong date turns an abstention into a confident error")
+
+    check("empty input is safe", enrich([], "in 2022") == [])
+
+
 def test_context_noise() -> None:
     """Two sources of context noise found by reading a real failing case."""
     print("\ncontext noise reduction")
@@ -453,7 +492,7 @@ def main() -> int:
     for fn in (test_lexical, test_dedup_identity, test_context_rendering,
                test_query_intent, test_query_dates, test_always_on_floor,
                test_ranking_profiles, test_embedding_text, test_speaker_prompt,
-               test_context_noise, test_reader_prompt,
+               test_temporal_enrichment, test_context_noise, test_reader_prompt,
                test_results_roundtrip, test_dataset_dates, test_stratified_sampling):
         try:
             fn()

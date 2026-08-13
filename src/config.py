@@ -34,15 +34,25 @@ CORE_MEMORY_FILES = ["CORE.md", "PREFERENCES.md", "INSTRUCTIONS.md", "CONSTRAINT
 CORE_MEMORY_TOKEN_BUDGET = 500  # Always injected
 
 # Extraction Configuration (Phase 1: Stage 1 & 2 only)
-SENSORY_FILTER_THRESHOLD = 0.3  # Heuristic score threshold
+SENSORY_FILTER_THRESHOLD = float(os.getenv("SENSORY_FILTER_THRESHOLD", "0.3"))
 EXTRACTION_CLASSIFIER_THRESHOLD = 0.6  # Classifier confidence threshold
 
 # Heuristic weights for sensory filter
+# NOTE: `length` (0.3) equals SENSORY_FILTER_THRESHOLD (0.3) below. Length alone therefore
+# saturates the filter at 100 characters, so any message that long passes regardless of
+# what it says and the other three signals never affect the outcome. On conversational
+# text -- where most turns clear 100 characters -- Stage 1 admits nearly everything, which
+# is the first half of why Stage 3 escalation measured 80% rather than the designed 13%.
+#
+# Left as-is on purpose. Tightening it is a COST lever, not a quality one: the turns it
+# would newly reject are conversational filler that mostly yields nothing anyway, and
+# every rejection is also a chance to lose a fact. Raise SENSORY_FILTER_THRESHOLD or lower
+# the length weight to trade recall for spend, and measure both sides before keeping it.
 HEURISTIC_WEIGHTS = {
-    "length": 0.3,  # Longer messages more likely to contain info
-    "keywords": 0.4,  # Presence of important keywords
-    "question": 0.15,  # Questions often contain context
-    "specificity": 0.15,  # Specific details vs vague statements
+    "length": float(os.getenv("HEURISTIC_W_LENGTH", "0.3")),
+    "keywords": float(os.getenv("HEURISTIC_W_KEYWORDS", "0.4")),
+    "question": float(os.getenv("HEURISTIC_W_QUESTION", "0.15")),
+    "specificity": float(os.getenv("HEURISTIC_W_SPECIFICITY", "0.15")),
 }
 
 # Keywords that signal extractable information
