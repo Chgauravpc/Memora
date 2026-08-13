@@ -322,6 +322,11 @@ def test_reader_prompt() -> None:
     check("drops the attribution prohibition that doubled abstentions",
           "do not transfer it" not in p,
           "present in v2, which scored 32% with abstentions 8 -> 16")
+    check("the closing line does not invite refusal",
+          "NO_ANSWER" not in qa.READER_TEMPLATE,
+          "the last line before generation outweighs the system prompt")
+    check("the closing line is still a prompt to answer",
+          qa.READER_TEMPLATE.rstrip().endswith("Answer:"))
 
     for ver, marker in (("v1", "HOW TO READ THE CONTEXT"),
                         ("v2", "do not transfer it")):
@@ -330,6 +335,10 @@ def test_reader_prompt() -> None:
         present = marker in qa.READER_SYSTEM
         check(f"{ver} is selectable for A/B",
               qa.READER_PROMPT_VERSION == ver and (present if ver == "v2" else not present))
+        if ver == "v1":
+            check("v1 keeps its original template verbatim",
+                  "NO_ANSWER" in qa.READER_TEMPLATE,
+                  "otherwise the v1 baseline is not the thing that was measured")
     os.environ.pop("BENCH_READER_PROMPT", None)
     importlib.reload(qa)
 

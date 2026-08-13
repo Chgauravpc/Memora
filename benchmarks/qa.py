@@ -132,7 +132,7 @@ _READER_PROMPTS = {
 READER_PROMPT_VERSION = os.getenv("BENCH_READER_PROMPT", "v3").strip().lower()
 READER_SYSTEM = _READER_PROMPTS.get(READER_PROMPT_VERSION, READER_SYSTEM_V3)
 
-READER_TEMPLATE = """\
+READER_TEMPLATE_V1 = """\
 MEMORY CONTEXT
 --------------
 {context}
@@ -142,6 +142,40 @@ QUESTION
 {question}
 
 Terse answer (or NO_ANSWER):"""
+
+# THE TRAILING CUE WAS THE ACTUAL PROBLEM.
+#
+# Three system-prompt rewrites failed to stop over-abstention, including one whose worked
+# example was the exact failing case:
+#
+#   question : When is Melanie planning on going camping?
+#   context  : - [25 May, 2023] Melanie - camping trip: June 2023 (event)   <- line 1
+#   answer   : NO_ANSWER
+#
+# The answer was verbatim in the first context line and the reader still refused. The
+# system prompt was not the binding constraint: the LAST thing the model read, immediately
+# before generating, was "(or NO_ANSWER)". That is the highest-salience position in a
+# prompt, and it stood as a standing invitation to refuse while every instruction pulling
+# the other way sat thousands of tokens earlier.
+#
+# The cue is removed rather than reworded. NO_ANSWER remains defined in the system prompt,
+# so the option is still available -- it is simply no longer the final suggestion. V1's
+# template is kept intact so that configuration stays reproducible.
+READER_TEMPLATE_V2 = """\
+MEMORY CONTEXT
+--------------
+{context}
+
+QUESTION
+--------
+{question}
+
+Answer:"""
+
+# v1 keeps its original template so that configuration reproduces exactly; every later
+# version drops the trailing cue.
+READER_TEMPLATE = (READER_TEMPLATE_V1 if READER_PROMPT_VERSION == "v1"
+                   else READER_TEMPLATE_V2)
 
 JUDGE_SYSTEM = """\
 You grade a predicted answer against a gold answer for a conversational-memory benchmark.
