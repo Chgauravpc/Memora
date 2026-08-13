@@ -15,6 +15,7 @@ import redis
 from .config import (
     DEDUP_KEY_INCLUDES_SPEAKER,
     DEDUP_KEY_INCLUDES_VALUE,
+    ENTITY_INDEX_ENABLED,
     REDIS_HOST,
     REDIS_PORT,
     REDIS_DB,
@@ -75,6 +76,16 @@ class RedisStore:
         except redis.ConnectionError as e:
             logger.error(f"Failed to connect to Redis: {e}")
             raise
+
+        # Entity index shares this client, and therefore this logical DB -- so the
+        # benchmark's per-worker isolation covers it without extra plumbing.
+        self.entity_index = None
+        if ENTITY_INDEX_ENABLED:
+            try:
+                from .entity_index import EntityIndex
+                self.entity_index = EntityIndex(self.client)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Entity index unavailable: {exc}")
 
     def store_memory(self, memory: Dict) -> bool:
         """
@@ -145,6 +156,11 @@ class RedisStore:
         
         # Add to recency-ordered index (sorted set by timestamp)
         self.client.zadd(REDIS_RECENCY_INDEX, {memory_id: memory['timestamp']})
+
+        # Entity buckets, so a question naming someone can reach every memory about them
+        # regardless of how well any one of them matches the question's wording.
+        if ENTITY_INDEX_ENABLED and self.entity_index is not None:
+            self.entity_index.add(memory)
         
         logger.info(f"Stored memory {memory_id} (type={memory_type}, key={memory_key})")
         return True
@@ -402,6 +418,14 @@ class RedisStore:
         # Delete each memory properly
         for memory_id in memory_ids:
             self.delete_memory(memory_id)
+
+        # Entity buckets are not reachable from the recency index, so deleting memories
+        # leaves them behind. Stale ids would then be resolved against an empty store and
+        # silently dropped -- which looks like weak retrieval rather than a stale index.
+        if self.entity_index is not None:
+            removed = self.entity_index.clear()
+            if removed:
+                logger.warning(f"Cleared {removed} entity buckets")
 
     def increment_access_count(self, memory_id: str, current_turn: int) -> bool:
         """

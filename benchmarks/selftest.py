@@ -284,6 +284,103 @@ def test_speaker_prompt() -> None:
           "conversation between several people" not in p2)
 
 
+class _FakeRedis:
+    """Minimal Redis stand-in: just the set operations the entity index uses."""
+
+    def __init__(self):
+        self.sets = {}
+
+    def pipeline(self):
+        return self
+
+    def sadd(self, key, val):
+        self.sets.setdefault(key, set()).add(val)
+
+    def execute(self):
+        return None
+
+    def smembers(self, key):
+        return self.sets.get(key, set())
+
+    def scan_iter(self, match=None, count=None):
+        prefix = (match or "").rstrip("*")
+        return [k for k in list(self.sets) if k.startswith(prefix)]
+
+    def delete(self, key):
+        self.sets.pop(key, None)
+
+
+def test_entity_index() -> None:
+    print("\nentity-centric index")
+    _reload("conversation")
+    from src.entity_index import EntityIndex, extract_entities
+
+    ents = extract_entities({
+        "speaker": "Melanie", "key": "museum visit",
+        "value": "went to the Ravensbourne museum with Caroline",
+        "source_text": "",
+    })
+    check("indexes the speaker", "melanie" in ents)
+    check("indexes proper nouns from the value",
+          "ravensbourne" in ents and "caroline" in ents)
+    check("excludes capitalised non-entities",
+          not ({"the", "went", "with"} & ents), sorted(ents))
+
+    idx = EntityIndex(_FakeRedis())
+    idx.add({"memory_id": "m1", "speaker": "Melanie", "key": "adoption",
+             "value": "researching agencies", "source_text": ""})
+    idx.add({"memory_id": "m2", "speaker": "Caroline", "key": "chat",
+             "value": "talked with Melanie about adoption", "source_text": ""})
+    idx.add({"memory_id": "m3", "speaker": "Caroline", "key": "hobby",
+             "value": "plays guitar", "source_text": ""})
+
+    got = idx.memories_for(["Melanie"])
+    check("finds memories by entity", set(got) == {"m1", "m2"}, str(got))
+
+    # The multi-hop property: a memory naming BOTH queried entities ranks above one
+    # naming only one, which is what makes this a bridge-finder.
+    counts = idx.match_counts(["Melanie", "Caroline"])
+    check("memory mentioning both entities scores highest",
+          counts.get("m2") == 2 and counts.get("m1") == 1, str(counts))
+    ranked = idx.memories_for(["Melanie", "Caroline"])
+    check("both-entity memory ranks first", ranked[0] == "m2", str(ranked))
+
+    check("unknown entity returns nothing", idx.memories_for(["Nobody"]) == [])
+    check("clear empties the index", idx.clear() > 0 and idx.memories_for(["Melanie"]) == [])
+
+    _reload("legacy")
+    from src.config import ENTITY_INDEX_ENABLED as legacy_off
+    check("disabled under the legacy profile", legacy_off is False)
+
+
+def test_extraction_quality_prompt() -> None:
+    print("\nextraction value-quality guidance")
+    _reload("conversation")
+    from src.llm_extractor import LLMExtractor
+
+    ex = object.__new__(LLMExtractor)
+    captured = {}
+    ex._call_llm = lambda p: captured.setdefault("p", p) or "[]"
+    ex.provider = "test"
+    for attr in ("extraction_count", "escalation_count", "api_call_count",
+                 "key_rotation_count"):
+        setattr(ex, attr, 0)
+    ex.total_response_time_ms = 0.0
+
+    ex.extract("The charity race was great", 1, speaker="Melanie")
+    p = captured.get("p", "")
+    check("demands self-contained values", "SELF-CONTAINED" in p)
+    check("demands one memory per distinct fact", "ONE MEMORY PER DISTINCT FACT" in p)
+    check("shows the over-compression failure as a counter-example",
+          "purpose lost" in p,
+          "the base prompt's bare-token examples taught the compression")
+    check("asks for states as well as actions", "relationship status" in p)
+
+    from src.config import STAGE_3_MAX_TOKENS
+    check("token cap leaves room for richer values", STAGE_3_MAX_TOKENS >= 1000,
+          f"got {STAGE_3_MAX_TOKENS}; truncated JSON is swallowed as 'nothing found'")
+
+
 def test_temporal_enrichment() -> None:
     """Deterministic recovery of dates the LLM compressed away."""
     print("\ndeterministic temporal enrichment")
@@ -492,6 +589,7 @@ def main() -> int:
     for fn in (test_lexical, test_dedup_identity, test_context_rendering,
                test_query_intent, test_query_dates, test_always_on_floor,
                test_ranking_profiles, test_embedding_text, test_speaker_prompt,
+               test_entity_index, test_extraction_quality_prompt,
                test_temporal_enrichment, test_context_noise, test_reader_prompt,
                test_results_roundtrip, test_dataset_dates, test_stratified_sampling):
         try:

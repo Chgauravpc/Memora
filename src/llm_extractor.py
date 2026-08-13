@@ -268,6 +268,41 @@ Output (valid JSON array only):"""
                         f"references ('last week', 'yesterday') against that date and "
                         f"keep them in the value.\n"
                     )
+                # OVER-COMPRESSION IS THE MEASURED FAILURE MODE.
+                #
+                # Every example in the base prompt has a bare-token value -- "Alex",
+                # "Google", "dark mode" -- which teaches maximal compression. On
+                # conversational input that produces memories like
+                #     charity race: 18 May 2023
+                # from a turn that also said the race raised awareness for mental health.
+                # The date survives, the purpose is gone, and "what did the race raise
+                # awareness for" is then unanswerable from a memory that is otherwise
+                # about exactly the right thing. Retrieval cannot recover a detail that
+                # extraction discarded, so this bounds every downstream component.
+                #
+                # Two rules address it: values must stand alone, and one turn may yield
+                # several memories rather than being squeezed into one.
+                preamble += (
+                    "\nVALUE QUALITY -- this matters more than brevity:\n"
+                    "- Each value must be SELF-CONTAINED: understandable on its own, "
+                    "without the key and without the original sentence. Someone reading "
+                    "only the value should learn the fact.\n"
+                    "- KEEP the specifics that make a fact answerable: what it was for, "
+                    "why, with whom, where, how much, which one. Do not reduce a fact to "
+                    "its date or its bare subject.\n"
+                    "- Emit ONE MEMORY PER DISTINCT FACT. A turn mentioning an event, its "
+                    "purpose and a realisation about it is three memories, not one.\n"
+                    "- Record what someone IS or HAS as well as what they DID: "
+                    "relationship status, where they live, what they own.\n"
+                    "\nGood:  {\"key\": \"charity race\", \"value\": \"ran a charity race "
+                    "on 18 May 2023 raising awareness for mental health\"}\n"
+                    "Bad:   {\"key\": \"charity race\", \"value\": \"18 May 2023\"}   "
+                    "(purpose lost)\n"
+                    "Good:  {\"key\": \"relationship status\", \"value\": \"single since "
+                    "her breakup in 2019\"}\n"
+                    "Bad:   {\"key\": \"breakup\", \"value\": \"after 2019\"}   "
+                    "(status not stated)\n"
+                )
                 prompt = preamble + "\n" + prompt
 
             # Add stage 2 hint if available

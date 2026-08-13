@@ -217,7 +217,10 @@ GROQ_API_KEYS = _collect_groq_keys()
 GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else None  # Backward compatibility
 
 STAGE_3_CONFIDENCE_THRESHOLD = 0.7  # Escalate to LLM if Stage 2 < this
-STAGE_3_MAX_TOKENS = 500  # Max tokens for LLM extraction response (increased to prevent JSON cutoffs)
+# Richer, self-contained values and several memories per turn both need room. At 500 the
+# JSON silently truncates and the whole turn is lost to a parse failure -- which
+# extract() swallows, so it looks like "nothing worth remembering".
+STAGE_3_MAX_TOKENS = int(os.getenv("STAGE_3_MAX_TOKENS", "1200"))
 # 0.0, not 0.1. "Low" is not the same as reproducible: at 0.1 two ingests of the same
 # conversation produce DIFFERENT stores, so any A/B that re-ingests is comparing a change
 # plus a fresh sample of extraction noise. That confound is not small -- a 25-question
@@ -241,7 +244,10 @@ SEMANTIC_DEDUP_THRESHOLD = 0.92  # Similarity score to consider duplicate
 SEMANTIC_DEDUP_CHECK_LIMIT = 5  # Check top N similar memories for duplicates
 
 # Phase 3: Confidence Scoring Configuration
-MIN_CONFIDENCE_TO_STORE = 0.6  # Discard memories below this confidence
+# Inferred facts ("single since her 2019 breakup") are stated less confidently by the
+# model than quoted ones, and land near this line. Tunable so the recall/precision
+# trade can be measured rather than assumed.
+MIN_CONFIDENCE_TO_STORE = float(os.getenv("MIN_CONFIDENCE_TO_STORE", "0.6"))
 HIGH_CONFIDENCE_THRESHOLD = 0.9  # Candidate for core memory promotion
 CONFIDENCE_BOOST_PER_MENTION = 0.1  # Boost confidence when repeated
 MAX_CONFIDENCE = 0.95  # Maximum confidence after boosts
@@ -458,6 +464,23 @@ SPEAKER_AWARE_EXTRACTION = _flag("SPEAKER_AWARE_EXTRACTION", _CONV)
 # Second retrieval pass seeded with entities found in the first. Multi-hop questions name
 # one entity and ask about another reachable only through it; a single similarity lookup
 # against the original question cannot cross that gap.
+# Entity-centric retrieval: an inverted index from entity to the memories mentioning it.
+#
+# This is most of what a knowledge graph buys on conversational QA -- when a question names
+# someone, return every memory about them, whether or not any single one embeds close to the
+# question's phrasing. Multi-hop benefits most, because the bridging memory is frequently a
+# poor match for the question wording and neither dense nor lexical search finds it.
+#
+# What it deliberately does NOT do is infer across relations ("a 2019 breakup and no current
+# partner, therefore single"). That needs typed edges, a schema and entity resolution, and
+# it remains the real argument for a graph later.
+ENTITY_INDEX_ENABLED = _flag("ENTITY_INDEX_ENABLED", _CONV)
+ENTITY_RETRIEVAL_LIMIT = int(os.getenv("ENTITY_RETRIEVAL_LIMIT", "40"))
+# Base relevance for an entity match, scaled by how many of the query's entities a memory
+# mentions. Mentioning two named entities is far stronger evidence of being the bridge
+# between them than mentioning one, so the multiplier matters more than the base.
+ENTITY_MATCH_SCORE = float(os.getenv("ENTITY_MATCH_SCORE", "0.45"))
+
 MULTIHOP_EXPANSION_ENABLED = _flag("MULTIHOP_EXPANSION_ENABLED", _CONV)
 MULTIHOP_SEED_MEMORIES = int(os.getenv("MULTIHOP_SEED_MEMORIES", "5"))
 MULTIHOP_EXTRA_LIMIT = int(os.getenv("MULTIHOP_EXTRA_LIMIT", "30"))

@@ -134,6 +134,9 @@ def _architecture_snapshot() -> Dict[str, Any]:
         "dedup_speaker": getattr(c, "DEDUP_KEY_INCLUDES_SPEAKER", None),
         "dedup_value": getattr(c, "DEDUP_KEY_INCLUDES_VALUE", None),
         "embed_natural": getattr(c, "EMBED_NATURAL_TEXT", None),
+        "entity_index": getattr(c, "ENTITY_INDEX_ENABLED", None),
+        "stage3_max_tokens": getattr(c, "STAGE_3_MAX_TOKENS", None),
+        "min_confidence": getattr(c, "MIN_CONFIDENCE_TO_STORE", None),
         "max_memories": getattr(c, "MAX_MEMORIES_TO_RETRIEVE", None),
     }
 

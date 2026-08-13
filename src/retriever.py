@@ -23,6 +23,9 @@ from .config import (
     CONTEXT_EVIDENCE_MAX_CHARS,
     CONTEXT_EVIDENCE_TOP_N,
     CONTEXT_INCLUDE_SPEAKER,
+    ENTITY_INDEX_ENABLED,
+    ENTITY_MATCH_SCORE,
+    ENTITY_RETRIEVAL_LIMIT,
     FUSION_WEIGHT_DENSE,
     FUSION_WEIGHT_LEXICAL,
     LEXICAL_SEARCH_ENABLED,
@@ -413,6 +416,41 @@ class MemoryRetriever:
                     "Lexical branch: %d hits, %d new candidates, %d fused",
                     len(lexical_hits), added, len(fused),
                 )
+
+        # Branch 1d: ENTITY-CENTRIC RETRIEVAL.
+        #
+        # When the question names people or places, pull every memory about them. This is
+        # the recall path neither dense nor lexical search covers reliably: the memory that
+        # answers a multi-hop question often shares almost no wording with the question,
+        # so it ranks nowhere on similarity while being obviously relevant by subject.
+        #
+        # Scored by HOW MANY of the query's entities a memory mentions. A memory naming
+        # both entities in the question is the likeliest bridge between them, and that
+        # multiplier is where most of the value sits.
+        if ENTITY_INDEX_ENABLED and getattr(self.redis_store, "entity_index", None):
+            q_ents = query_entities(current_message)
+            if q_ents:
+                counts = self.redis_store.entity_index.match_counts(q_ents)
+                ranked_ents = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+                added = 0
+                for mem_id, hits in ranked_ents[:ENTITY_RETRIEVAL_LIMIT]:
+                    score = min(1.0, ENTITY_MATCH_SCORE * hits)
+                    if mem_id in all_memories:
+                        # Never lower a score earned by relevance.
+                        all_memories[mem_id]['semantic_score'] = max(
+                            float(all_memories[mem_id].get('semantic_score', 0) or 0),
+                            score)
+                        all_memories[mem_id]['entity_hits'] = hits
+                    else:
+                        full = self.redis_store.get_memory(mem_id)
+                        if full:
+                            full['semantic_score'] = score
+                            full['entity_hits'] = hits
+                            all_memories[mem_id] = full
+                            added += 1
+                if added:
+                    logger.debug("Entity branch added %d candidates for %s",
+                                 added, sorted(q_ents))
 
         # Branch 1c: MULTI-HOP EXPANSION.
         #
