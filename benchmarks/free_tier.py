@@ -7,13 +7,21 @@ widened by adding accounts. Groq enforces limits at the ORGANIZATION level, so s
 from six different friends are six independent quotas, while six keys from one account are
 one quota.
 
-Free-tier limits (Groq, verified June 2026 -- re-check, these move):
+Free-tier limits (Groq, verified 2026-08-18 -- re-check, these move):
 
-    llama-3.3-70b-versatile   30 RPM   1,000 RPD   12,000 TPM     100,000 TPD
-    llama-3.1-8b-instant      30 RPM  14,400 RPD    6,000 TPM    500,000 TPD
+    openai/gpt-oss-120b       30 RPM   1,000 RPD    8,000 TPM    200,000 TPD
+    openai/gpt-oss-20b        30 RPM   1,000 RPD    8,000 TPM    200,000 TPD
+    qwen/qwen3.6-27b          30 RPM   1,000 RPD    8,000 TPM    200,000 TPD
 
-The 70B model has the *stronger* judgement but only a fifth of the daily token budget, so
-which model you pick changes the account count by ~5x.
+llama-3.3-70b-versatile and llama-3.1-8b-instant, this file's previous baseline, have been
+removed from Groq's catalog entirely (404 model_not_found) -- do not reintroduce them.
+
+Unlike the old 70B/8B split, the three current candidates share IDENTICAL free-tier
+limits, so model choice no longer changes the account count. It changes cost and latency
+instead: 120b and 20b are both reasoning models that spend an uninstrumented chunk of every
+call's TPD on hidden chain-of-thought before the visible answer, so raw parameter count is
+not the only thing to weigh -- a smaller reasoning model may cost less per call for a short
+answer (judge verdict, reader answer) without losing any of the free-tier ceiling.
 
 Usage:
     python -m benchmarks.free_tier --keys 6
@@ -42,10 +50,15 @@ class Tier:
 
 
 TIERS: Dict[str, Tier] = {
-    "70b-free": Tier("70b-free", "llama-3.3-70b-versatile (free)", 30, 1_000, 12_000, 100_000),
-    "8b-free": Tier("8b-free", "llama-3.1-8b-instant (free)", 30, 14_400, 6_000, 500_000),
-    "70b-dev": Tier("70b-dev", "llama-3.3-70b-versatile (dev, card on file)",
-                    300, 10_000, 120_000, 1_000_000),
+    "gpt-oss-120b-free": Tier("gpt-oss-120b-free", "openai/gpt-oss-120b (free)",
+                              30, 1_000, 8_000, 200_000),
+    "gpt-oss-20b-free": Tier("gpt-oss-20b-free", "openai/gpt-oss-20b (free)",
+                             30, 1_000, 8_000, 200_000),
+    "qwen3.6-27b-free": Tier("qwen3.6-27b-free", "qwen/qwen3.6-27b (free)",
+                             30, 1_000, 8_000, 200_000),
+    # No paid/dev tier is modeled here -- the old "70b-dev" numbers were specific to a
+    # model that no longer exists on Groq. Verify live limits for your account before
+    # assuming a paid tier changes this math.
 }
 
 
@@ -133,7 +146,7 @@ def main() -> int:
     print("  per question. That single setting is why an all-API free run is hopeless.")
     print()
 
-    for tier_key in ("70b-free", "8b-free"):
+    for tier_key in ("gpt-oss-120b-free", "gpt-oss-20b-free", "qwen3.6-27b-free"):
         tier = TIERS[tier_key]
         print("=" * 74)
         print(f"{tier.name}   {tier.tpd:,} TPD / {tier.rpd:,} RPD per account")
@@ -153,7 +166,7 @@ def main() -> int:
         print()
 
     # ---------------------------------------------------------------- recommendation
-    tier = TIERS["70b-free"]
+    tier = TIERS["gpt-oss-20b-free"]
     judge_tokens = roles["judge"].tokens * args.overhead
     judge_calls = roles["judge"].calls
     need, binds = accounts_needed(judge_tokens, judge_calls, tier)
@@ -162,9 +175,13 @@ def main() -> int:
     print("=" * 74)
     print("RECOMMENDATION")
     print("=" * 74)
+    model_label = tier.name.replace(" (free)", "")
     print("Run extraction and the reader on your local model; put ONLY the judge on")
-    print("Groq's free 70B. The judge is by far the cheapest role in tokens and the one")
-    print("where model quality most directly moves the number you intend to publish.")
+    print(f"Groq's free {model_label}. The judge is by far the cheapest role in tokens")
+    print("and the one where model quality most directly moves the number you intend")
+    print("to publish. Note: judge_tokens below still assumes a non-reasoning output")
+    print("size (JUDGE_OUT in estimate.py) -- a reasoning model's hidden chain-of-")
+    print("thought is NOT counted here and will use more of the TPD budget than shown.")
     print()
     print(f"  judge needs   : {judge_tokens:,.0f} tokens "
           f"(incl. x{args.overhead} overhead)")
@@ -186,7 +203,7 @@ def main() -> int:
     print()
     print("  Do NOT chase enough free accounts to host the reader -- that would take")
     print(f"  {accounts_needed(roles['reader'].tokens * args.overhead, roles['reader'].calls, tier)[0]}"
-          f" free 70B accounts. You own a 64-core AMX server; use it.")
+          f" free {model_label} accounts. You own a 64-core AMX server; use it.")
     return 0
 
 

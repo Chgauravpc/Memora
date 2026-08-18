@@ -239,7 +239,7 @@ class Answer:
     failed: bool = False
 
 
-def read(client: LLMClient, context: str, question: str, max_tokens: int = 128) -> Answer:
+def read(client: LLMClient, context: str, question: str, max_tokens: int = 500) -> Answer:
     raw = client.chat(
         user=READER_TEMPLATE.format(context=context or "(no memories retrieved)",
                                     question=question),
@@ -272,7 +272,11 @@ def judge(client: LLMClient, question: str, gold: str, prediction: str) -> Optio
     raw = client.chat(
         user=JUDGE_TEMPLATE.format(question=question, gold=gold, prediction=prediction),
         system=JUDGE_SYSTEM,
-        max_tokens=8,
+        # Reasoning models (e.g. openai/gpt-oss-*) spend tokens on hidden chain-of-thought
+        # before the visible CORRECT/INCORRECT verdict. 8 was sized for a non-reasoning
+        # model and silently returned '' here -- not an error, just an exhausted budget --
+        # which judge() then can't distinguish from a real "CORRECT"/"INCORRECT" mismatch.
+        max_tokens=200,
         temperature=0.0,
     )
     if raw is None:

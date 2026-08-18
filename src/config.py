@@ -183,7 +183,7 @@ MEMORY_FIELDS = [
 # Phase 3: Stage 3 LLM Extraction Configuration
 STAGE_3_ENABLED = True  # Enable/disable LLM-based extraction
 LLM_PROVIDER = "groq"  # "openai" | "anthropic" | "groq"
-LLM_EXTRACTION_MODEL = os.getenv("LLM_EXTRACTION_MODEL", "llama-3.3-70b-versatile")
+LLM_EXTRACTION_MODEL = os.getenv("LLM_EXTRACTION_MODEL", "openai/gpt-oss-120b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 

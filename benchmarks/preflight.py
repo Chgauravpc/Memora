@@ -169,13 +169,20 @@ def check_llm() -> None:
                f"({'assumed separate accounts' if n > 1 else 'single account'})"
                + ("  - judge-only free run needs ~6" if n < 6 else ""))
 
-    reply = client.chat(user="Reply with the single word: ready", max_tokens=8)
+    # 64, not 8: reasoning models (e.g. openai/gpt-oss-*) spend tokens on hidden
+    # chain-of-thought before the visible reply, so a tight budget here reads as total
+    # failure when the call actually succeeded with nothing left to say.
+    reply = client.chat(user="Reply with the single word: ready", max_tokens=64)
     if reply and "ready" in reply.lower():
         report(OK, "LLM live call", f"{client.provider}/{client.model}")
     elif reply:
         report(WARN, "LLM live call", f"unexpected reply: {reply[:60]!r}")
-    else:
+    elif reply is None:
         report(BAD, "LLM live call", "all attempts failed - check key and rate limits")
+    else:
+        report(WARN, "LLM live call",
+               "call succeeded but returned empty content - a reasoning model may need "
+               "more max_tokens headroom than this check gives it")
 
 
 def check_stage3() -> None:

@@ -78,7 +78,7 @@ class LLMClient:
         timeout: float = 120.0,
     ):
         self.provider = (provider or os.getenv("BENCH_LLM_PROVIDER", "groq")).lower()
-        self.model = model or os.getenv("BENCH_LLM_MODEL", "llama-3.3-70b-versatile")
+        self.model = model or os.getenv("BENCH_LLM_MODEL", "openai/gpt-oss-20b")
         self.max_attempts = max_attempts
         self.base_delay = base_delay
         self.max_delay = max_delay
