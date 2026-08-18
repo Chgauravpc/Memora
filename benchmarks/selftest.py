@@ -359,8 +359,17 @@ def test_extraction_quality_prompt() -> None:
     from src.llm_extractor import LLMExtractor
 
     ex = object.__new__(LLMExtractor)
-    captured = {}
-    ex._call_llm = lambda p: captured.setdefault("p", p) or "[]"
+    captured = {"calls": 0}
+
+    def _fake_llm(prompt: str) -> str:
+        # setdefault returns the prompt (truthy), so `... or "[]"` yielded the
+        # PROMPT, not an empty array -- which is non-JSON and drove the retry
+        # path. Capture and return separately.
+        captured.setdefault("p", prompt)
+        captured["calls"] += 1
+        return "[]"
+
+    ex._call_llm = _fake_llm
     ex.provider = "test"
     for attr in ("extraction_count", "escalation_count", "api_call_count",
                  "key_rotation_count"):
@@ -375,6 +384,29 @@ def test_extraction_quality_prompt() -> None:
           "purpose lost" in p,
           "the base prompt's bare-token examples taught the compression")
     check("asks for states as well as actions", "relationship status" in p)
+
+    check("valid JSON costs exactly one LLM call", captured["calls"] == 1,
+          "a fake returning non-JSON used to recurse until RecursionError")
+
+    # A model that never emits JSON must cost at most one retry, not one API
+    # call per stack frame.
+    bad = object.__new__(LLMExtractor)
+    bad_calls = {"n": 0}
+
+    def _never_json(prompt: str) -> str:
+        bad_calls["n"] += 1
+        return "I could not find anything worth remembering."
+
+    bad._call_llm = _never_json
+    bad.provider = "test"
+    for attr in ("extraction_count", "escalation_count", "api_call_count",
+                 "key_rotation_count"):
+        setattr(bad, attr, 0)
+    bad.total_response_time_ms = 0.0
+    out = bad.extract("The charity race was great", 1, speaker="Melanie")
+    check("unparseable output returns empty, not an exception", out == [])
+    check("unparseable output retries at most once", bad_calls["n"] == 2,
+          f"took {bad_calls['n']} LLM calls; unbounded recursion burns quota per frame")
 
     from src.config import STAGE_3_MAX_TOKENS
     check("token cap leaves room for richer values", STAGE_3_MAX_TOKENS >= 1000,

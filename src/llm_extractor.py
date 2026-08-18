@@ -456,7 +456,8 @@ Output (valid JSON array only):"""
         self, 
         response_text: str, 
         original_message: str,
-        turn_number: int
+        turn_number: int,
+        attempt: int = 0
     ) -> List[Dict]:
         """
         Parse LLM response and validate against schema.
@@ -465,6 +466,8 @@ Output (valid JSON array only):"""
             response_text: Raw LLM response
             original_message: Original user message
             turn_number: Current turn number
+            attempt: 0 on the first parse, 1 when re-parsing a retry response.
+                Retries are capped at one; see the JSONDecodeError handler.
         
         Returns:
             List of validated memory dictionaries
@@ -525,7 +528,12 @@ Output (valid JSON array only):"""
             logger.error(f"Failed to parse LLM JSON response: {e}")
             logger.debug(f"Response was: {response_text[:200]}")
             
-            # Retry once with error feedback
+            # Retry once, and only once. Without the attempt guard a model that
+            # never returns JSON recurses until RecursionError, burning one API
+            # call per frame.
+            if attempt > 0:
+                logger.error("Giving up on this turn after one failed retry")
+                return []
             return self._retry_with_error(response_text, original_message, turn_number, str(e))
         
         except Exception as e:
@@ -555,7 +563,7 @@ Output (valid JSON array only):"""
         
         try:
             response_text = self._call_llm(retry_prompt)
-            return self._parse_and_validate(response_text, original_message, turn_number)
+            return self._parse_and_validate(response_text, original_message, turn_number, attempt=1)
         except Exception as e:
             logger.error(f"Retry also failed: {e}")
             return []

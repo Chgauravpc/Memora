@@ -1,5 +1,11 @@
 # Why the first LoCoMo run scored 5%
 
+> **Status — 2026-08-18.** Everything in *Recommended order of work* below has been
+> executed, plus several items it did not anticipate. **Jump to
+> [Status after the fixes](#status-after-the-fixes) at the end of this document** for what
+> was changed, the score trajectory, and what is still open. The analysis below is retained
+> as the record of the original diagnosis.
+
 First smoke test, conversation 1, 20 questions:
 
 ```
@@ -204,3 +210,80 @@ escalation (are the right facts being stored at all?) and the flat 50-memory con
 
 **Reporting requirement:** any published number must state which of these were enabled.
 Both default to off, so the shipped-configuration baseline stays measurable and honest.
+
+---
+
+# Status after the fixes
+
+*Last updated 2026-08-18, through commit `fd65ca3`.*
+
+The ablation ladder above was run and then overtaken: the first two steps landed, and the
+diagnosis they produced redirected the work toward extraction and reproducibility. What
+follows is the current state, so a new session does not re-derive it.
+
+## Score trajectory (all conversation 1, n=25 — smoke tests, not results)
+
+| Reading | Reported | Floor | Note |
+|---|---|---|---|
+| Initial | 5.0% | — | Substantially a harness artefact: head-sliced sample excluded single-hop and adversarial |
+| After dates + ranking + harness fixes | 64.0% | 56.0% | Failures dominated by *reader* misses |
+| Next | 32.0% | 28.0% | **Confounded** — `STAGE_3_TEMPERATURE=0.1` rebuilt a different store (coverage 65% → 42%) |
+| After pinning temperature to 0 | 48.0% | 40.0% | Failures dominated by *retrieval* misses (8 of 13) |
+
+**None of these is a result.** They are single-conversation, 25-question smoke tests, and
+the swing between them is larger than most of the effects being measured. The only number
+worth publishing comes from a full 10-conversation run, quoted as the floor.
+
+## What changed, and why
+
+- **Reproducibility first** (`2f98361`). `STAGE_3_TEMPERATURE` → 0.0. Until this landed,
+  every re-ingest built a different store and no A/B was readable. The 64% → 32% "regression"
+  was this and nothing else.
+- **Reader over-abstention** (`f36ddfb`, `0c9d23d`). Three system-prompt rewrites failed to
+  fix it; the cause was the trailing `(or NO_ANSWER)` on the *last line of the user message*.
+  Position beat instruction.
+- **Harness bug** (`02d9352`). `diagnose.py` read a `"questions"` key the worker never
+  writes (it writes `"records"`), reporting an empty run as a clean one. Now it accepts both
+  and raises on an unrecognised payload rather than reporting nothing.
+- **Dedup collapse.** `build_dedup_key()` was `type:key`, global across speakers, so distinct
+  facts collided and one was dropped. Adding speaker + value hash took the store from 366 to
+  868 memories on identical input.
+- **Lexical retrieval** (`2f294e3`). BM25 (`src/lexical_index.py`) fused with dense via RRF.
+  `BM25_K1` is set to 50 by request, which effectively disables term-frequency saturation —
+  worth re-sweeping against the default 1.2 when there is time.
+- **Temporal recovery** (`214785b`). `_enrich_temporal()` restores dates the LLM drops,
+  ordered *after* the escalation decision so it does not mask turns that still need Stage 3.
+- **Extraction over-compression** (`fd65ca3`). The base prompt's bare-token examples
+  (`"Alex"`, `"Google"`) taught maximal compression, yielding memories like
+  `charity race: 18 May 2023` with the purpose discarded. Countered with an explicit VALUE
+  QUALITY block and a labelled counter-example; `STAGE_3_MAX_TOKENS` 500 → 1200.
+- **Entity-centric retrieval** (`fd65ca3`). `src/entity_index.py`, scored by how many
+  distinct query entities a memory mentions. Chosen over a real knowledge graph: most of the
+  multi-hop benefit, none of the schema or entity-resolution cost.
+- **Infrastructure** (`f017b4e`). Native-binary fallback for Redis/Qdrant, musl builds,
+  `setsid` against logind's `KillUserProcesses`.
+
+## Open — in the order I would take them
+
+1. **A full 10-conversation run.** Every number above is n=25 on one conversation. This is
+   the single highest-value remaining action and it is measurement, not code.
+2. **Retrieval misses, currently 8 of 13 failures.** The extraction and entity changes in
+   `fd65ca3` target these directly but have not yet been measured. If they do not move, the
+   ceiling is not extraction verbosity, and the question becomes whether the right facts are
+   being *selected* for extraction at all.
+3. **Stage 1/2 escalation rate (~80%).** The heuristic and regex layers were tuned for
+   assistant-style input and mostly abstain on narrative dialogue, so nearly every turn pays
+   for an LLM call. Improving them is a cost and latency win, not an accuracy one.
+4. **`BM25_K1` sweep** — 50 vs the 1.2 default, once something else is not moving.
+5. **Knowledge graph.** Still the honest answer for inference chains the entity index cannot
+   follow (*"2019 breakup + no current partner ⇒ single"*). Deferred deliberately: a KG
+   inherits whatever extraction loses, so it is only worth building on top of extraction that
+   has been measured good.
+
+## Standing constraints
+
+- **No hardcoding or benchmark-specific cheating.** Every change must be defensible as a
+  general improvement to the memory system. `MEMORA_PROFILE` exists so retuning is explicit
+  and reversible rather than smuggled into defaults.
+- **The entire server operation stays in `/home/kenton/projects/memora`.**
+- Quote the **floor**, state the sample size, and say which flags were on.
