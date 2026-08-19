@@ -36,7 +36,8 @@ def load_raw(raw_dir: Path = RAW_DIR) -> List[Dict[str, Any]]:
 def aggregate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
     by_cat: Dict[str, Dict[str, float]] = defaultdict(
         lambda: {"n": 0, "judge_correct": 0, "ungraded": 0, "f1": 0.0,
-                 "em": 0, "abstained": 0, "reader_failed": 0, "retrieved": 0}
+                 "em": 0, "abstained": 0, "reader_failed": 0, "reader_empty": 0,
+                 "retrieved": 0}
     )
 
     turns = sessions = stage3_calls = turn_errors = 0
@@ -85,10 +86,11 @@ def aggregate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
             b["em"] += 1 if rec.get("exact_match") else 0
             b["abstained"] += 1 if rec.get("abstained") else 0
             b["reader_failed"] += 1 if rec.get("reader_failed") else 0
+            b["reader_empty"] += 1 if rec.get("reader_empty") else 0
             b["retrieved"] += rec.get("retrieved_count", 0)
 
     categories: Dict[str, Any] = {}
-    total_n = total_correct = total_graded = 0
+    total_n = total_correct = total_graded = total_reader_empty = 0
     for cat, b in sorted(by_cat.items()):
         n = int(b["n"])
         graded = n - int(b["ungraded"])
@@ -103,11 +105,13 @@ def aggregate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
             "exact_match": round(b["em"] / n, 4) if n else None,
             "abstain_rate": round(b["abstained"] / n, 4) if n else None,
             "reader_failures": int(b["reader_failed"]),
+            "reader_empty": int(b["reader_empty"]),
             "mean_retrieved": round(b["retrieved"] / n, 1) if n else None,
         }
         total_n += n
         total_correct += int(b["judge_correct"])
         total_graded += graded
+        total_reader_empty += int(b["reader_empty"])
 
     return {
         "conversations": len(payloads),
@@ -133,6 +137,12 @@ def aggregate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
             "qa_seconds": round(qa_seconds, 1),
             "mean_memories_in_store": round(sum(memories) / len(memories), 1) if memories else None,
             "reader_judge_usage": usage,
+            # Reader call succeeded (not `failed`) but returned nothing visible -- the
+            # same reasoning-token-exhaustion shape as stage3_empty, just in the QA path.
+            # See Answer.empty in benchmarks/qa.py.
+            "reader_empty": total_reader_empty,
+            "reader_empty_rate": (round(total_reader_empty / total_n, 4)
+                                  if total_n else None),
         },
         "warnings": {
             "stage3_uninstrumented": uninstrumented,
@@ -189,6 +199,11 @@ def render(summary: Dict[str, Any]) -> str:
     if empty_rate is not None:
         lines.append(f"  stage3 returned none: {op['stage3_empty']} "
                      f"({empty_rate:.0%} of calls)")
+    reader_empty_rate = op.get("reader_empty_rate")
+    if op.get("reader_empty"):
+        lines.append(f"  reader returned empty: {op['reader_empty']} "
+                     f"({reader_empty_rate:.0%} of questions) - reasoning budget likely "
+                     f"exhausted; distinct from a wrong answer, see benchmarks/qa.py")
 
     warn = summary.get("warnings", {})
     if warn.get("vector_store_down"):

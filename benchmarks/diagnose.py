@@ -232,8 +232,16 @@ def analyse(records: List[Dict[str, Any]], present_threshold: float = 0.5) -> Di
         if cov is None:
             buckets["ungradable"].append(r)
         elif cov >= present_threshold:
-            # The answer was retrievable and the system still missed it.
-            buckets["reader_miss" if not r.get("reader_failed") else "reader_error"].append(r)
+            # The answer was retrievable and the system still missed it. Split three ways:
+            # an exception (reader_error), a successful-but-empty call burning its whole
+            # reasoning budget with nothing visible left (reader_empty, see Answer.empty
+            # in benchmarks/qa.py), or a genuine wrong-but-present answer (reader_miss).
+            if r.get("reader_failed"):
+                buckets["reader_error"].append(r)
+            elif r.get("reader_empty"):
+                buckets["reader_empty"].append(r)
+            else:
+                buckets["reader_miss"].append(r)
         else:
             buckets["retrieval_miss"].append(r)
 
@@ -281,6 +289,7 @@ def render(a: Dict[str, Any], show: int = 3, category: Optional[int] = None) -> 
 
     line("retrieval_miss", "retrieval miss (fact absent)")
     line("reader_miss", "reader miss (fact WAS present)")
+    line("reader_empty", "reader returned empty (budget exhausted)")
     line("reader_error", "reader errored")
     line("ungradable", "gold had no content words")
     L.append("")
@@ -288,17 +297,23 @@ def render(a: Dict[str, Any], show: int = 3, category: Optional[int] = None) -> 
     L.append("")
 
     L.append("  by category:")
-    L.append(f"    {'category':<16}{'retr-miss':>10}{'reader-miss':>13}{'error':>8}")
+    L.append(f"    {'category':<16}{'retr-miss':>10}{'reader-miss':>13}"
+             f"{'empty':>8}{'error':>8}")
     for cat, counts in sorted(a["per_category"].items()):
         L.append(f"    {cat:<16}{counts.get('retrieval_miss', 0):>10}"
-                 f"{counts.get('reader_miss', 0):>13}{counts.get('reader_error', 0):>8}")
+                 f"{counts.get('reader_miss', 0):>13}"
+                 f"{counts.get('reader_empty', 0):>8}{counts.get('reader_error', 0):>8}")
     L.append("")
 
     L.append("-" * 70)
     L.append("INTERPRETATION")
     L.append("-" * 70)
     rm = len(b.get("retrieval_miss", []))
-    dm = len(b.get("reader_miss", []))
+    # reader_empty counts toward the reader side of this split even though it's rendered
+    # separately below -- it's a reader-stage failure (budget exhausted), not a retrieval
+    # problem, and folding it into "dm" here keeps this top-line verdict from
+    # under-attributing to the reader when the empty-budget failure mode is common.
+    dm = len(b.get("reader_miss", [])) + len(b.get("reader_empty", []))
     if rm > dm * 2:
         L.append("  Dominated by RETRIEVAL misses. The reader is not the problem - the")
         L.append("  facts are not reaching it. Look at extraction first (is the fact")
@@ -315,7 +330,8 @@ def render(a: Dict[str, Any], show: int = 3, category: Optional[int] = None) -> 
     L.append("")
 
     for key, label in (("retrieval_miss", "RETRIEVAL MISSES"),
-                       ("reader_miss", "READER MISSES")):
+                       ("reader_miss", "READER MISSES"),
+                       ("reader_empty", "READER EMPTY (budget exhausted)")):
         rows = b.get(key, [])
         if category is not None:
             rows = [r for r in rows if r.get("category") == category]

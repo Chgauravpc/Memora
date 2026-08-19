@@ -237,9 +237,15 @@ class Answer:
     text: str
     abstained: bool
     failed: bool = False
+    # True when the call succeeded (raw is not None, so not `failed`) but the model spent
+    # its whole max_tokens budget on hidden reasoning and left nothing visible. Distinct
+    # from `failed`: this is a real response with real usage, not an exception -- and
+    # distinct from abstention: the model never said NO_ANSWER, it said nothing at all.
+    # Without this flag it's indistinguishable from a plain wrong answer.
+    empty: bool = False
 
 
-def read(client: LLMClient, context: str, question: str, max_tokens: int = 500) -> Answer:
+def read(client: LLMClient, context: str, question: str, max_tokens: int = 800) -> Answer:
     raw = client.chat(
         user=READER_TEMPLATE.format(context=context or "(no memories retrieved)",
                                     question=question),
@@ -256,7 +262,7 @@ def read(client: LLMClient, context: str, question: str, max_tokens: int = 500) 
     abstained = NO_ANSWER in text.upper()
     if abstained:
         text = NO_ANSWER
-    return Answer(text=text, abstained=abstained)
+    return Answer(text=text, abstained=abstained, empty=(not abstained and not text))
 
 
 # ---------------------------------------------------------------------- judge

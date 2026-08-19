@@ -313,6 +313,7 @@ def run_conversation(
             "evidence": q.evidence,
             "judge_correct": verdict,
             "reader_failed": answer.failed,
+            "reader_empty": answer.empty,
             "abstained": answer.abstained,
             "token_f1": qa_mod.token_f1(answer.text, gold),
             "exact_match": qa_mod.exact_match(answer.text, gold),
