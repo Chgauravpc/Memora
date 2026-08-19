@@ -821,12 +821,12 @@ class MemoryRetriever:
 
         # Evidence is attached to the highest-RANKED memories, which is why this is
         # computed before the chronological sort reorders them.
-        top_ids = {
-            m.get('memory_id')
-            for m in sorted(memories,
-                            key=lambda m: float(m.get('retrieval_score', 0) or 0),
-                            reverse=True)[:CONTEXT_EVIDENCE_TOP_N]
-        } if CONTEXT_EVIDENCE_TOP_N > 0 else set()
+        top_ranked = (
+            sorted(memories, key=lambda m: float(m.get('retrieval_score', 0) or 0),
+                  reverse=True)[:CONTEXT_EVIDENCE_TOP_N]
+            if CONTEXT_EVIDENCE_TOP_N > 0 else []
+        )
+        top_ids = {m.get('memory_id') for m in top_ranked}
 
         def render(mem: Dict) -> str:
             when = _clean_date(mem.get('event_date') or _source_date(mem) or '')
@@ -858,6 +858,17 @@ class MemoryRetriever:
             return line
 
         out: List[str] = []
+        if top_ranked:
+            # The chronological timeline below can put 50 memories between the reader
+            # and the one it needs -- "lost in the middle" is a real attention effect,
+            # not a hypothetical one, and it's exactly what surfaced in the smoke test
+            # (a correct-but-buried fact losing to a plausible-but-wrong one that
+            # happened to sit nearer the top). This section repeats the same top-ranked
+            # memories the timeline already marks with a quote, but leads with them in
+            # relevance order instead of making the reader find them chronologically.
+            out.append("=== MOST RELEVANT (highest ranked, not necessarily latest) ===")
+            out.extend(render(m) for m in top_ranked)
+            out.append("")
         if dated:
             out.append("=== TIMELINE (oldest first) ===")
             out.extend(render(m) for m in dated)

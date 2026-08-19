@@ -114,6 +114,8 @@ and may be followed by `said: "..."`, the original sentence it came from.
     or happened. For "when" questions this is usually the answer, NOT the bracketed date.
   * `said:` quotes are the most reliable evidence; prefer them when they conflict with a
     compressed value.
+  * A "MOST RELEVANT" section, if present, repeats a few facts from the TIMELINE below --
+    it is a shortcut to the most relevant ones, not new or different information.
 
 HOW TO ANSWER
 - Give your best answer whenever the context supports one -- including when you must
