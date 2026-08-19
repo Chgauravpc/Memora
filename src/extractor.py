@@ -332,6 +332,14 @@ class MemoryExtractor:
         # Explicit elapsed time. "3 years ago" is resolvable; "recently" is not, and is
         # therefore excluded.
         r'\b(\d+\s+(?:day|week|month|year)s?\s+ago)\b',
+        # Relative-day references. Each of these is unambiguous once the utterance date
+        # is known (it's always "the day before", never "some unspecified earlier day"),
+        # which is exactly the gap that let a support-group visit mentioned on 8 May but
+        # meant as 7 May get stamped with the wrong date -- the value carried "yesterday"
+        # and nothing kept it. Same append-only treatment as "N days ago": this doesn't
+        # compute a resolved date, it preserves the word so the reader can do that
+        # arithmetic itself against the (reliable) bracketed utterance date.
+        r'\b(yesterday|the day before|the previous day|a day earlier|last night)\b',
     ]
 
     def _enrich_temporal(self, memories: List[Dict], message: str) -> List[Dict]:

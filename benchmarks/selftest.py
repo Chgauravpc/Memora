@@ -451,6 +451,14 @@ def test_temporal_enrichment() -> None:
 
     check("empty input is safe", enrich([], "in 2022") == [])
 
+    # The measured LoCoMo failure: gold "7 May", predicted "8 May" -- the support group
+    # visit was mentioned during the 8 May session but happened "yesterday". Without a
+    # relative-day pattern, the value carried no signal that it wasn't the same day.
+    yesterday = enrich([{"value": "went to the support group", "key": "support group"}],
+                       "[8 May, 2023] Caroline: I went to the support group yesterday")
+    check("recovers a relative-day reference",
+          "yesterday" in yesterday[0]["value"], yesterday[0]["value"])
+
 
 def test_context_noise() -> None:
     """Two sources of context noise found by reading a real failing case."""
