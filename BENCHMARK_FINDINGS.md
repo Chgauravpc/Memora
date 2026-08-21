@@ -1,10 +1,12 @@
 # Why the first LoCoMo run scored 5%
 
-> **Status — 2026-08-18.** Everything in *Recommended order of work* below has been
+> **Status — 2026-08-20.** Everything in *Recommended order of work* below has been
 > executed, plus several items it did not anticipate. **Jump to
-> [Status after the fixes](#status-after-the-fixes) at the end of this document** for what
-> was changed, the score trajectory, and what is still open. The analysis below is retained
-> as the record of the original diagnosis.
+> [Status after the fixes](#status-after-the-fixes) for the 2026-08-18 state, then
+> [Status log (2026-08-20 on)](#status-log-2026-08-20-on) for every run since** — the model
+> Groq decommissioned mid-project, the fixes that followed, and the readings so far, each
+> entry appended rather than overwritten. The analysis below is retained as the record of
+> the original diagnosis.
 
 First smoke test, conversation 1, 20 questions:
 
@@ -287,3 +289,117 @@ worth publishing comes from a full 10-conversation run, quoted as the floor.
   and reversible rather than smuggled into defaults.
 - **The entire server operation stays in `/home/kenton/projects/memora`.**
 - Quote the **floor**, state the sample size, and say which flags were on.
+- **From 2026-08-20 on: every benchmark run gets an entry below** — what changed since the
+  last entry, the exact command, and the result (score, floor, store size, diagnose
+  breakdown). Existing entries are never rewritten; a new run appends a new dated entry so
+  the trajectory stays legible instead of collapsing into "current status" that silently
+  loses what was already tried. If a change is later found to be confounded or wrong, say so
+  in a later entry — do not edit the old one away.
+
+---
+
+# Status log (2026-08-20 on)
+
+## 2026-08-18/19 — `llama-3.3-70b-versatile` decommissioned by Groq
+
+Not a code change: Groq removed the model this whole document's baseline (`48%`/`40%
+floor`, and everything in "Status after the fixes" above) was measured against. Every
+extraction and reader/judge call started returning `groq.NotFoundError: model_not_found`,
+silently swallowed by `LLMExtractor.extract()`'s blanket except into `[]`, which produced an
+empty store and a **0% LoCoMo score** with no direct error surfaced in the scorecard.
+
+**Fix:** moved `LLM_EXTRACTION_MODEL` → `openai/gpt-oss-120b`, `BENCH_LLM_MODEL` →
+`openai/gpt-oss-20b` (worktree commits `08beb20`, `20c99ab` — the second one because the
+first fix missed `.env.benchmark.example`, whose own `cp .env.benchmark.example .env`
+instruction silently re-clobbered a correctly-edited `.env` back to the dead model on the
+benchmark host — that round-trip is why the failure recurred after appearing fixed once).
+
+**New confound this introduces, not yet fully resolved:** both replacement models are
+*reasoning* models — they spend tokens on hidden chain-of-thought before the visible reply.
+Confirmed directly: a "reply with the single word ready" smoke call returned `''` at
+`max_tokens=8` and only succeeded at `max_tokens=200` (37 tokens spent to say one word).
+Every hardcoded `max_tokens` in the harness (judge: 8, reader: 128, preflight's own smoke
+test: 8) was sized for the old non-reasoning model and would silently truncate to empty on
+the new ones — commit `e9ff8cc` raised these (judge → 200, reader → 500 → 800, preflight →
+64) and added instrumentation (`Answer.empty`, surfaced in `report`/`diagnose`) so a future
+truncation shows up as its own stat instead of masquerading as a wrong answer.
+
+`benchmarks/free_tier.py`'s `TIERS` table was still quoting the dead models' limits;
+replaced with live-fetched numbers (`08beb20`... completed in a follow-up edit): all three
+current candidates (`gpt-oss-120b`, `gpt-oss-20b`, `qwen/qwen3.6-27b`) share identical
+free-tier quota (200K TPD / 8K TPM / 1K RPD per account) — unlike the old 70B-vs-8B split,
+model choice no longer changes account math, only cost/latency per call.
+
+## 2026-08-19/20 — P0/P1/P2 reader- and extraction-side fixes
+
+Diagnosed from a `--limit 1 --max-questions 25 --workers 1 --save-context --force` smoke
+test on the new models (see reading below): failures had flipped from
+retrieval-miss-dominated (the pre-decommission baseline: 8 of 13) to **reader-miss-dominated
+(9 of 12, 75%)** — extraction/retrieval was working, the answer step was not. Three fixes,
+each independently committed and selftest-verified:
+
+- **P0** (`e9ff8cc`) — reader `max_tokens` 500 → 800; added `Answer.empty` (see above).
+- **P1** (`8ff901a`) — `_format_chronological` (`src/retriever.py`) already computed the
+  top-`CONTEXT_EVIDENCE_TOP_N`-ranked memories and quoted their `source_text`, but rendered
+  them in-place inside a up-to-50-item chronological wall. Added a `=== MOST RELEVANT ===`
+  section repeating the same top-ranked memories, in relevance order, *before* the timeline —
+  addresses "lost in the middle": a real-but-wrong fact winning over a real-and-right one that
+  was simply positioned worse. The timeline is unchanged below it. Verified against a
+  synthetic reproduction of the charity-race miss (gold "self-care is important" now renders
+  first instead of third).
+- **P2** (`5196e51`) — `_TEMPORAL_PATTERNS` (`src/extractor.py`) caught absolute dates and "N
+  days ago" but nothing for "yesterday" / "the day before" / "last night" — hypothesized as
+  the cause of a temporal miss (gold 7 May, predicted 8 May, memory dated by utterance day).
+  Added a selftest case for the hypothesis (passes), but **the actual failing question was
+  re-tested after this landed and still failed identically** (see below) — the hypothesis was
+  not confirmed against the real turn text before shipping the fix, which is the mistake to
+  avoid next time: check the raw dataset text for the specific failing case, don't infer the
+  mechanism from the gold/predicted pair alone.
+
+### Reading 1 — after the model migration, before P0/P1/P2
+
+`python run_locomo.py --limit 1 --max-questions 25 --workers 1 --save-context --force`
+(conversation 1, `openai/gpt-oss-120b` extraction / `openai/gpt-oss-20b` reader+judge)
+
+| | |
+|---|---|
+| Score / floor | **54.2% / 54.2%** (no refusal-credit inflation) |
+| Store | 769 memories, 419 turns, 80.4% Stage-3 escalation, 17.5% Stage-3-empty |
+| Diagnose | 3 retrieval-miss, 9 reader-miss (75%) — dominance flipped from the pre-decommission baseline |
+
+### Reading 2 — after P0 + P1 + P2, full re-ingest
+
+Same command, same conversation, after commits `e9ff8cc`/`8ff901a`/`5196e51`.
+
+| | |
+|---|---|
+| Score / floor | **33.3% / 33.3%** |
+| Store | **431 memories** — same 419 turns, same 80.4% escalation, similar ~19% Stage-3-empty |
+| Diagnose | 7 retrieval-miss, 10 reader-miss, mixed |
+
+**This is not read as "P0/P1/P2 made things worse."** None of the three has a code path that
+reduces store size: P0 and P1 never run during ingest (reader/judge-time and
+retrieval-formatting-time respectively), and P2 only *appends* text to a value, which changes
+a dedup hash and should if anything produce *more* distinct memories, not 44% fewer. Turn
+count, escalation rate, and empty-call rate were all within noise of Reading 1 — only the
+store composition changed. Leading hypothesis: **`openai/gpt-oss-120b`'s Stage-3 output is
+not reproducible at `STAGE_3_TEMPERATURE=0.0` the way the old non-reasoning model was** — a
+reasoning model's hidden chain-of-thought is not guaranteed bit-exact run to run, and that
+was never verified after the model swap, only assumed to carry over. This is the same shape
+of confound as the documented 64%→32% swing above, with a different root cause.
+
+**Not yet run: the isolating experiment** — re-run the identical command with zero code
+changes and compare store size / score against Reading 2. If it swings again, that confirms
+model non-determinism as the dominant noise source and the single-conversation methodology
+needs either multiple averaged ingests or the full 10-conversation run before any P0/P1/P2
+verdict — good or bad — is trustworthy. **This is now the top open item, above the full
+10-conversation run itself**, since a full run inherits the same confound if it's real.
+
+Two specific failures worth carrying forward regardless of the confound, because they
+recurred identically across both readings (i.e. survived a full store rebuild):
+- Charity-race adversarial question: gold fact not in the `MOST RELEVANT` section in either
+  reading, meaning P1 had nothing to promote — the wrong fact outranks the right one, which is
+  a ranking problem P1 cannot fix by construction.
+- Support-group temporal question: still 8 May vs gold 7 May after P2. The relative-day
+  hypothesis is unconfirmed for this specific case — next step is reading the actual raw
+  LoCoMo turn text, not re-guessing.
