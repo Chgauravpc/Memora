@@ -6,6 +6,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] - benchmark-driven retrieval work
+
+Driven by measured LoCoMo failures rather than feature planning. See
+`BENCHMARK_FINDINGS.md` → *Status after the fixes* for the diagnosis behind each item and
+the score trajectory. All numbers so far are single-conversation smoke tests; a full
+10-conversation run is still outstanding.
+
+### Added
+
+- **`benchmarks/`** — LoCoMo harness: `runner`, `worker`, `qa`, `report`, `diagnose`,
+  `preflight`, `estimate`, `selftest`, plus dataset and path helpers. Entry point
+  `run_locomo.py`. Runs are resumable.
+- **`benchmarks/selftest.py`** — 104 logic assertions needing no Redis, Qdrant, or network.
+  The de-facto unit suite; run it before and after any change to `src/` or `benchmarks/`.
+- **`benchmarks/diagnose.py`** — splits failures into retrieval misses vs reader misses, and
+  reports a *floor* score by auditing abstentions against golds. More informative than the
+  headline percentage, which cannot distinguish the two.
+- **`src/lexical_index.py`** — in-process BM25 plus Reciprocal Rank Fusion, no new
+  dependency. Fused with the dense branch by rank, avoiding score-normalization constants.
+- **`src/entity_index.py`** — inverted entity → memory index. Candidates scored by how many
+  *distinct* query entities they mention, so a memory naming two queried people outranks one
+  naming either. Deliberately not a knowledge graph: no schema, no entity resolution.
+- **`MEMORA_PROFILE`** (`conversation` default / `legacy`) — keeps benchmark retuning
+  explicit and reversible instead of silently changing assistant-style behaviour.
+- **Memory fields `speaker`, `event_date`, `event_ts`** — `process_turn` previously took
+  only text, so multi-speaker attribution and event time were unrecoverable.
+- **`scripts/start_backends.sh`** — docker-or-native backend startup with musl-preferring
+  Qdrant asset selection and `setsid` detachment.
+
+### Changed
+
+- `STAGE_3_TEMPERATURE` 0.1 → **0.0**. Non-zero temperature meant each re-ingest built a
+  different store, making every A/B unreadable; one apparent 64% → 32% regression was
+  entirely this.
+- `STAGE_3_MAX_TOKENS` 500 → **1200**. Richer extraction values overflowed the cap, and the
+  truncated JSON was swallowed by a blanket `except` and presented as "nothing worth
+  remembering".
+- Extraction prompt gained a **VALUE QUALITY** block. The base prompt's bare-token examples
+  taught maximal compression, producing memories like `charity race: 18 May 2023` with the
+  answerable detail discarded.
+- Ranking rebalanced under the conversation profile toward relevance
+  (`semantic .55 / type .10`, from `.30 / .40`). The old weights let an irrelevant
+  `constraint` outrank a well-matching `event` — right for instruction-following, wrong for
+  question answering.
+- `ALWAYS_ON_SEMANTIC_FLOOR` lowered to 0.15 under the conversation profile; the previous 0.5
+  recreated the crowding the ranking change was meant to remove.
+- `BM25_K1` exposed and set to 50 (by request), effectively disabling term-frequency
+  saturation. Worth re-sweeping against the 1.2 default.
+
+### Fixed
+
+- **Dedup key collision.** `build_dedup_key()` was `type:key`, global across speakers, so
+  distinct facts sharing a key silently overwrote one another. Now composes
+  `type + key [+ speaker] [+ sha1(value)[:16]]` — store size went 366 → 868 on identical
+  input.
+- **Reader over-abstention.** Caused by the trailing `(or NO_ANSWER)` on the last line of
+  the user message, not by the system prompt; three system-prompt rewrites had failed first.
+- **Unbounded JSON-retry recursion.** `_parse_and_validate` → `_retry_with_error` →
+  `_call_llm` → `_parse_and_validate` had no attempt guard, so a model that never emitted
+  JSON recursed until `RecursionError`, one API call per stack frame. Capped at one retry.
+- **`diagnose.py` read the wrong results key** (`questions`; the worker writes `records`),
+  reporting an empty run as a clean one. Now accepts both and raises on unrecognised
+  payloads.
+- **Temporal detail loss.** `_enrich_temporal()` recovers dates the LLM drops, ordered after
+  the escalation decision so it does not mask turns that still need Stage 3.
+
+---
+
 ## [2.0.1] - 2026-02-13
 
 ### 🐛 Fixed

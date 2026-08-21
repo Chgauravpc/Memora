@@ -16,8 +16,15 @@ env/
 venv/
 ENV/
 .venv/
+.venv-linux/
 env.bak/
 venv.bak/
+
+# Benchmark artefacts (leading slash = repo root only, so evaluation/results/ is unaffected).
+# Everything the LoCoMo harness generates lives here: the dataset, Redis/Qdrant bind
+# mounts, per-conversation results. All reproducible, none of it belongs in git.
+/data/
+/results/
 
 # Environment Variables
 .env

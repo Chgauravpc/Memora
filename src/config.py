@@ -34,15 +34,25 @@ CORE_MEMORY_FILES = ["CORE.md", "PREFERENCES.md", "INSTRUCTIONS.md", "CONSTRAINT
 CORE_MEMORY_TOKEN_BUDGET = 500  # Always injected
 
 # Extraction Configuration (Phase 1: Stage 1 & 2 only)
-SENSORY_FILTER_THRESHOLD = 0.3  # Heuristic score threshold
+SENSORY_FILTER_THRESHOLD = float(os.getenv("SENSORY_FILTER_THRESHOLD", "0.3"))
 EXTRACTION_CLASSIFIER_THRESHOLD = 0.6  # Classifier confidence threshold
 
 # Heuristic weights for sensory filter
+# NOTE: `length` (0.3) equals SENSORY_FILTER_THRESHOLD (0.3) below. Length alone therefore
+# saturates the filter at 100 characters, so any message that long passes regardless of
+# what it says and the other three signals never affect the outcome. On conversational
+# text -- where most turns clear 100 characters -- Stage 1 admits nearly everything, which
+# is the first half of why Stage 3 escalation measured 80% rather than the designed 13%.
+#
+# Left as-is on purpose. Tightening it is a COST lever, not a quality one: the turns it
+# would newly reject are conversational filler that mostly yields nothing anyway, and
+# every rejection is also a chance to lose a fact. Raise SENSORY_FILTER_THRESHOLD or lower
+# the length weight to trade recall for spend, and measure both sides before keeping it.
 HEURISTIC_WEIGHTS = {
-    "length": 0.3,  # Longer messages more likely to contain info
-    "keywords": 0.4,  # Presence of important keywords
-    "question": 0.15,  # Questions often contain context
-    "specificity": 0.15,  # Specific details vs vague statements
+    "length": float(os.getenv("HEURISTIC_W_LENGTH", "0.3")),
+    "keywords": float(os.getenv("HEURISTIC_W_KEYWORDS", "0.4")),
+    "question": float(os.getenv("HEURISTIC_W_QUESTION", "0.15")),
+    "specificity": float(os.getenv("HEURISTIC_W_SPECIFICITY", "0.15")),
 }
 
 # Keywords that signal extractable information
@@ -104,6 +114,43 @@ REDIS_DEDUP_PREFIX = "dedup:"
 REDIS_TYPE_INDEX_PREFIX = "type:"
 REDIS_RECENCY_INDEX = "recent_memories"
 
+# ---------------------------------------------------------------------------
+# ARCHITECTURE PROFILE
+# ---------------------------------------------------------------------------
+# Memora was designed for a single user talking about themselves in the first person
+# ("I prefer X", "my name is Y"). A large class of real workloads -- and every
+# conversational-memory benchmark -- is instead MULTI-PARTY and TIME-ANCHORED: several
+# speakers recounting events that happened on particular dates, across many sessions.
+#
+# Three assumptions break in that setting, all of them silently:
+#
+#   1. No speaker.     process_turn() takes only text, so facts about different people
+#                      merge into one undifferentiated pool. "Who did X" becomes
+#                      unanswerable and attribution is quietly wrong.
+#   2. No event time.  `timestamp` is datetime.now() at ingest, not when the thing
+#                      happened, so "when" questions cannot be answered at all.
+#   3. Global key dedup. `dedup:<type>:<key>` is keyed on (type, key) with no speaker and
+#                      no value, so the FIRST `entity:location` permanently blocks every
+#                      later one -- a second speaker's location, or the same speaker
+#                      moving house, is discarded rather than stored.
+#
+# MEMORA_PROFILE selects between:
+#   "conversation" (default) -- speaker- and time-aware; the architecture below.
+#   "legacy"                 -- exactly the pre-redesign behaviour, for A/B comparison.
+#
+# Everything the profile switches on is individually overridable, so any published number
+# can state precisely which mechanisms were active.
+MEMORA_PROFILE = os.getenv("MEMORA_PROFILE", "conversation").strip().lower()
+_CONV = MEMORA_PROFILE == "conversation"
+
+
+def _flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 # Memory Record Fields
 MEMORY_FIELDS = [
     "memory_id",
@@ -114,6 +161,13 @@ MEMORY_FIELDS = [
     "turn_number",
     "timestamp",
     "source_text",
+    # Conversation-model fields. `speaker` is who the memory is ABOUT (the utterer);
+    # `event_date` is the human-readable date the content refers to, and `event_ts` its
+    # epoch form for range queries. All three are distinct from `timestamp`, which
+    # remains ingest wall-clock.
+    "speaker",
+    "event_date",
+    "event_ts",
     "mention_count",     # Phase 3: Track repetitions for confidence boost
     "superseded_by",     # Phase 3: ID of memory that supersedes this one
     "supersedes",        # Phase 3: ID of memory this one supersedes
@@ -129,24 +183,60 @@ MEMORY_FIELDS = [
 # Phase 3: Stage 3 LLM Extraction Configuration
 STAGE_3_ENABLED = True  # Enable/disable LLM-based extraction
 LLM_PROVIDER = "groq"  # "openai" | "anthropic" | "groq"
-LLM_EXTRACTION_MODEL = os.getenv("LLM_EXTRACTION_MODEL", "llama-3.3-70b-versatile")
+LLM_EXTRACTION_MODEL = os.getenv("LLM_EXTRACTION_MODEL", "openai/gpt-oss-120b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-# Support multiple Groq API keys for rate limit rotation
-GROQ_API_KEYS = [
-    key for key in [
-        os.getenv("GROQ_API_KEY"),
-        os.getenv("GROQ_API_KEY_1"),
-        os.getenv("GROQ_API_KEY_2"),
-        os.getenv("GROQ_API_KEY_3"),
-    ] if key is not None
-]
+# Support multiple Groq API keys for rate limit rotation.
+#
+# Groq enforces rate limits at the ORGANIZATION level, not per key, so extra keys from the
+# same account share one quota and buy nothing. Keys from separate accounts each carry
+# their own quota -- that is the only way more keys increase throughput.
+#
+# Scanned dynamically (GROQ_API_KEY, then GROQ_API_KEY_1..N until a gap) instead of the
+# previous hardcoded 4 slots, which silently ignored any key past GROQ_API_KEY_3.
+def _collect_groq_keys(max_keys: int = 64) -> list:
+    keys, seen = [], set()
+    candidates = [os.getenv("GROQ_API_KEY")]
+    for i in range(1, max_keys + 1):
+        candidates.append(os.getenv(f"GROQ_API_KEY_{i}"))
+    for key in candidates:
+        if not key:
+            continue
+        key = key.strip()
+        # Skip the placeholder shipped in .env.example so a half-filled .env fails loudly
+        # at "no key configured" rather than obscurely at "401 invalid api key".
+        if not key or key.startswith("gsk-your") or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys
+
+
+GROQ_API_KEYS = _collect_groq_keys()
 GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else None  # Backward compatibility
 
 STAGE_3_CONFIDENCE_THRESHOLD = 0.7  # Escalate to LLM if Stage 2 < this
-STAGE_3_MAX_TOKENS = 500  # Max tokens for LLM extraction response (increased to prevent JSON cutoffs)
-STAGE_3_TEMPERATURE = 0.1  # Low temperature for consistent extraction
+# Richer, self-contained values and several memories per turn both need room. At 500 the
+# JSON silently truncates and the whole turn is lost to a parse failure -- which
+# extract() swallows, so it looks like "nothing worth remembering".
+STAGE_3_MAX_TOKENS = int(os.getenv("STAGE_3_MAX_TOKENS", "1200"))
+# 0.0, not 0.1. "Low" is not the same as reproducible: at 0.1 two ingests of the same
+# conversation produce DIFFERENT stores, so any A/B that re-ingests is comparing a change
+# plus a fresh sample of extraction noise. That confound is not small -- a 25-question
+# slice swung 64% -> 32% across two runs where both the reader prompt and the store had
+# changed, and the store difference alone moved mean gold-word coverage from 65% to 42%.
+# Determinism is worth more here than whatever diversity 0.1 was buying.
+STAGE_3_TEMPERATURE = float(os.getenv("STAGE_3_TEMPERATURE", "0.0"))
+
+# Stage 3 retry policy (rate limits / transient upstream errors).
+# Attempts are floored at STAGE_3_MAX_ATTEMPTS regardless of how many API keys are
+# configured. Before this existed, the attempt count was len(api_keys), so a single-key
+# deployment made ONE attempt with no backoff and any transient 429 propagated -- fine for
+# a demo, fatal for a batch run making tens of thousands of calls.
+STAGE_3_MAX_ATTEMPTS = int(os.getenv("STAGE_3_MAX_ATTEMPTS", "6"))
+STAGE_3_BACKOFF_BASE = float(os.getenv("STAGE_3_BACKOFF_BASE", "1.0"))  # seconds
+STAGE_3_BACKOFF_MAX = float(os.getenv("STAGE_3_BACKOFF_MAX", "60.0"))  # seconds
 
 # Phase 3: Semantic Deduplication Configuration
 SEMANTIC_DEDUP_ENABLED = True  # Enable/disable semantic deduplication
@@ -154,7 +244,10 @@ SEMANTIC_DEDUP_THRESHOLD = 0.92  # Similarity score to consider duplicate
 SEMANTIC_DEDUP_CHECK_LIMIT = 5  # Check top N similar memories for duplicates
 
 # Phase 3: Confidence Scoring Configuration
-MIN_CONFIDENCE_TO_STORE = 0.6  # Discard memories below this confidence
+# Inferred facts ("single since her 2019 breakup") are stated less confidently by the
+# model than quoted ones, and land near this line. Tunable so the recall/precision
+# trade can be measured rather than assumed.
+MIN_CONFIDENCE_TO_STORE = float(os.getenv("MIN_CONFIDENCE_TO_STORE", "0.6"))
 HIGH_CONFIDENCE_THRESHOLD = 0.9  # Candidate for core memory promotion
 CONFIDENCE_BOOST_PER_MENTION = 0.1  # Boost confidence when repeated
 MAX_CONFIDENCE = 0.95  # Maximum confidence after boosts
@@ -225,13 +318,172 @@ PROMOTABLE_TYPES = ["entity", "preference", "constraint", "instruction"]
 # 5-Signal Ranking Weights (must sum to 1.0)
 # Rebalanced to reduce semantic dominance and prioritize memory type diversity
 # Frequency reduced to minimal - it creates circular dependency (accessed memories rank higher)
+#
+# ENV-OVERRIDABLE so the benchmark can ablate the weighting without editing this file.
+# Defaults are unchanged, so the baseline measurement is exactly the shipped behaviour.
+#
+# Why this is worth ablating: `type` (0.40) currently outweighs `semantic` (0.30). That is
+# defensible for an assistant, where a dietary constraint matters whether or not the user
+# just mentioned it. It is questionable for question answering, where the answer to
+# "when did Melanie visit the museum" lives in a `fact` (0.5) or `event` (0.4) -- the two
+# LOWEST type priorities -- while an irrelevant `constraint` (1.0) collects 0.40 from type
+# alone and can outrank a well-matching event. See BENCHMARK_FINDINGS.md.
+def _rank_weight(name: str, default: float) -> float:
+    return float(os.getenv(f"RANK_W_{name.upper()}", str(default)))
+
+
+#
+# The conversation profile inverts the type/semantic balance. Type priority answers
+# "how important is this KIND of memory in general", which is the right question when
+# deciding what an assistant must never forget, and the wrong one when deciding which
+# memory answers the question in front of you. Under the legacy weights an entirely
+# irrelevant `constraint` scores 0.40 from type alone and outranks a well-matching
+# `event` at 0.34 -- and conversational answers live almost entirely in `fact` and
+# `event`, the two lowest priorities.
+_W = {
+    "conversation": {"semantic": 0.55, "type": 0.10, "recency": 0.10,
+                     "frequency": 0.05, "confidence": 0.20},
+    "legacy": {"semantic": 0.30, "type": 0.40, "recency": 0.10,
+               "frequency": 0.05, "confidence": 0.15},
+}[("conversation" if _CONV else "legacy")]
+
 RANKING_WEIGHTS_5_SIGNAL = {
-    "semantic": 0.30,     # Semantic similarity (reduced: generic queries shouldn't dominate)
-    "type": 0.40,         # Memory type priority (increased: ensures diversity across types)
-    "recency": 0.10,      # Recency score (gentler penalty for old memories)
-    "frequency": 0.05,    # Access frequency (minimal: prevents circular dependency)
-    "confidence": 0.15,   # Confidence score (increased: extraction quality matters)
+    "semantic": _rank_weight("semantic", _W["semantic"]),
+    "type": _rank_weight("type", _W["type"]),
+    "recency": _rank_weight("recency", _W["recency"]),
+    "frequency": _rank_weight("frequency", _W["frequency"]),
+    "confidence": _rank_weight("confidence", _W["confidence"]),
 }
+
+# Render the originating date alongside each retrieved memory.
+#
+# Memories are formatted as "- key: value [turn N, X% confident]". A turn index is
+# meaningless to a reader answering "when did this happen", and the stored `timestamp` is
+# datetime.now() at INGEST time, not the time the conversation describes. So temporal
+# questions are unanswerable from the context regardless of how good retrieval is.
+#
+# When enabled, the date is recovered from the leading "[...]" of `source_text`, which the
+# benchmark adapter puts there. Off by default: it changes the prompt for every caller, and
+# on a live assistant the ingest date and the event date usually coincide anyway.
+MEMORY_CONTEXT_INCLUDE_DATE = _flag("MEMORY_CONTEXT_INCLUDE_DATE", _CONV)
+
+# ---------------------------------------------------------------------------
+# CONVERSATION-PROFILE MECHANISMS
+# ---------------------------------------------------------------------------
+
+# Dedup identity. Legacy: (type, key) -- globally unique forever, so distinct facts
+# sharing a key annihilate each other. Conversation: (type, key, speaker, value), so a
+# repeat of the SAME statement still dedups, while a different speaker or a changed value
+# is preserved as its own memory. Superseding (Phase 3) remains the mechanism for "this
+# replaces that"; exact-key dedup should never have been doing that job implicitly.
+DEDUP_KEY_INCLUDES_SPEAKER = _flag("DEDUP_KEY_INCLUDES_SPEAKER", _CONV)
+DEDUP_KEY_INCLUDES_VALUE = _flag("DEDUP_KEY_INCLUDES_VALUE", _CONV)
+
+# Semantic dedup must not merge the same kind of event across different dates -- two
+# museum visits months apart are two memories, and collapsing them destroys exactly the
+# distinctions a temporal or multi-hop question probes.
+SEMANTIC_DEDUP_RESPECTS_DATE = _flag("SEMANTIC_DEDUP_RESPECTS_DATE", _CONV)
+
+# Embedding text. Legacy embeds "key | value | type: event" -- a terse fragment with a
+# constant noise suffix, compared against natural-language questions. Conversation embeds
+# a natural sentence including speaker and date, which sits far closer to query phrasing
+# in the same vector space.
+EMBED_NATURAL_TEXT = _flag("EMBED_NATURAL_TEXT", _CONV)
+
+# Lexical (BM25) retrieval fused with dense search by Reciprocal Rank Fusion.
+# Dense embeddings from a 384-dim MiniLM are weak on rare proper nouns -- exactly the
+# names, places and titles that conversational questions turn on. BM25 is excellent at
+# them. The two fail differently, which is what makes fusing them worth more than tuning
+# either alone.
+LEXICAL_SEARCH_ENABLED = _flag("LEXICAL_SEARCH_ENABLED", _CONV)
+LEXICAL_SEARCH_LIMIT = int(os.getenv("LEXICAL_SEARCH_LIMIT", "100"))
+RRF_K = int(os.getenv("RRF_K", "60"))  # standard RRF damping constant
+
+# Okapi BM25 parameters.
+#
+# k1 controls TERM-FREQUENCY SATURATION. At the textbook 1.2-2.0 the third occurrence of a
+# word adds much less than the first, which is what stops a document that merely repeats a
+# query term from beating one that is actually about it. As k1 grows the curve straightens
+# toward raw term frequency: k1=50 is effectively "no saturation".
+#
+# Set to 50 on request. Worth knowing what that does to THIS corpus: memories are short
+# (a key, a value, one source sentence), so term counts are nearly all 0 or 1 and
+# saturation rarely binds -- which limits both the harm and the benefit. Where it will
+# show is long `source_text` fields, whose repeated words now scale linearly and can
+# outrank a short, exactly-matching memory.
+#
+# b controls length normalisation (1.0 = full, 0.0 = none). Left at the standard 0.75.
+BM25_K1 = float(os.getenv("BM25_K1", "50.0"))
+BM25_B = float(os.getenv("BM25_B", "0.75"))
+FUSION_WEIGHT_DENSE = float(os.getenv("FUSION_WEIGHT_DENSE", "1.0"))
+FUSION_WEIGHT_LEXICAL = float(os.getenv("FUSION_WEIGHT_LEXICAL", "1.0"))
+
+# Context rendering. Legacy groups memories by TYPE, which destroys chronology -- the
+# reader sees preferences, then entities, then events, with no way to order them. For
+# reasoning over "what happened when", and for chaining facts across sessions, temporal
+# order carries most of the signal.
+CONTEXT_CHRONOLOGICAL = _flag("CONTEXT_CHRONOLOGICAL", _CONV)
+CONTEXT_INCLUDE_SPEAKER = _flag("CONTEXT_INCLUDE_SPEAKER", _CONV)
+
+# Include the originating utterance for the highest-ranked memories. key:value is a lossy
+# compression of what was said; for the top few memories the raw sentence often carries
+# the detail the question actually asks for. Bounded so it cannot dominate the budget.
+CONTEXT_EVIDENCE_TOP_N = int(os.getenv("CONTEXT_EVIDENCE_TOP_N", "8" if _CONV else "0"))
+CONTEXT_EVIDENCE_MAX_CHARS = int(os.getenv("CONTEXT_EVIDENCE_MAX_CHARS", "220"))
+
+# Query-aware retrieval. When a query asks WHEN something happened, memories carrying a
+# date are more useful than those without; when it names a person, memories attributed to
+# that person are. Both are properties of the QUERY, computed generically -- no dataset
+# vocabulary, no per-benchmark rules.
+QUERY_AWARE_RETRIEVAL = _flag("QUERY_AWARE_RETRIEVAL", _CONV)
+TEMPORAL_INTENT_BOOST = float(os.getenv("TEMPORAL_INTENT_BOOST", "0.15"))
+SPEAKER_MATCH_BOOST = float(os.getenv("SPEAKER_MATCH_BOOST", "0.15"))
+
+# Extra credit when a memory's date matches a date the QUERY names. Temporal intent alone
+# only rewards carrying *a* date; this rewards carrying the *right* one, which is the
+# difference between "a dated memory" and "the answer".
+DATE_MATCH_BOOST = float(os.getenv("DATE_MATCH_BOOST", "0.25"))
+
+# Relevance score given to `constraint`/`instruction` memories injected regardless of the
+# query. Legacy pinned this at 0.5, which -- once semantic weight rose to 0.55 -- let an
+# irrelevant constraint outrank genuinely matching memories, recreating in the semantic
+# term exactly the crowding the type-weight rebalance removed. Matching the recency
+# fallback keeps them present without letting them displace relevance.
+ALWAYS_ON_SEMANTIC_FLOOR = float(
+    os.getenv("ALWAYS_ON_SEMANTIC_FLOOR", "0.15" if _CONV else "0.5"))
+
+# Semantic dedup must not merge two SPEAKERS' similar statements. Cosine cannot see who
+# said something, so "likes hiking" from two people looks identical and the second is
+# discarded -- the same silent loss the exact-key dedup fix addressed, by another route.
+SEMANTIC_DEDUP_RESPECTS_SPEAKER = _flag("SEMANTIC_DEDUP_RESPECTS_SPEAKER", _CONV)
+
+# Tell the Stage 3 extractor who is speaking. Its prompt is written for a single
+# first-person user ("facts about the user"), which mis-frames every multi-party turn.
+SPEAKER_AWARE_EXTRACTION = _flag("SPEAKER_AWARE_EXTRACTION", _CONV)
+
+# Second retrieval pass seeded with entities found in the first. Multi-hop questions name
+# one entity and ask about another reachable only through it; a single similarity lookup
+# against the original question cannot cross that gap.
+# Entity-centric retrieval: an inverted index from entity to the memories mentioning it.
+#
+# This is most of what a knowledge graph buys on conversational QA -- when a question names
+# someone, return every memory about them, whether or not any single one embeds close to the
+# question's phrasing. Multi-hop benefits most, because the bridging memory is frequently a
+# poor match for the question wording and neither dense nor lexical search finds it.
+#
+# What it deliberately does NOT do is infer across relations ("a 2019 breakup and no current
+# partner, therefore single"). That needs typed edges, a schema and entity resolution, and
+# it remains the real argument for a graph later.
+ENTITY_INDEX_ENABLED = _flag("ENTITY_INDEX_ENABLED", _CONV)
+ENTITY_RETRIEVAL_LIMIT = int(os.getenv("ENTITY_RETRIEVAL_LIMIT", "40"))
+# Base relevance for an entity match, scaled by how many of the query's entities a memory
+# mentions. Mentioning two named entities is far stronger evidence of being the bridge
+# between them than mentioning one, so the multiplier matters more than the base.
+ENTITY_MATCH_SCORE = float(os.getenv("ENTITY_MATCH_SCORE", "0.45"))
+
+MULTIHOP_EXPANSION_ENABLED = _flag("MULTIHOP_EXPANSION_ENABLED", _CONV)
+MULTIHOP_SEED_MEMORIES = int(os.getenv("MULTIHOP_SEED_MEMORIES", "5"))
+MULTIHOP_EXTRA_LIMIT = int(os.getenv("MULTIHOP_EXTRA_LIMIT", "30"))
 
 # Frequency scoring configuration
 FREQUENCY_DECAY_RATE = 0.05         # How fast frequency score decays

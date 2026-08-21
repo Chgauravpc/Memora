@@ -5,6 +5,7 @@ Uses LLM for complex extraction cases that pattern matching can't handle
 
 import logging
 import json
+import random
 import re
 import time
 from typing import Dict, List, Optional, Tuple
@@ -19,6 +20,10 @@ from .config import (
     GROQ_API_KEYS,
     STAGE_3_MAX_TOKENS,
     STAGE_3_TEMPERATURE,
+    STAGE_3_MAX_ATTEMPTS,
+    STAGE_3_BACKOFF_BASE,
+    STAGE_3_BACKOFF_MAX,
+    SPEAKER_AWARE_EXTRACTION,
     UPDATE_PATTERNS,
 )
 
@@ -196,21 +201,33 @@ Output (valid JSON array only):"""
             logger.info(f"LLM Extractor initialized (provider={self.provider}, model={self.model})")
     
     def extract(
-        self, 
-        message: str, 
+        self,
+        message: str,
         turn_number: int,
         context_turns: Optional[List[str]] = None,
         stage2_hint: Optional[str] = None,
+        speaker: Optional[str] = None,
+        event_date: Optional[str] = None,
     ) -> List[Dict]:
         """
         Extract memories using LLM.
-        
+
         Args:
             message: User's message
             turn_number: Current turn number
             context_turns: Last 3 turns for context (optional)
             stage2_hint: Hint from Stage 2 about likely type (optional)
-        
+            speaker: Who is speaking. The base prompt is written for a single
+                first-person user ("factual information about the user"), which mis-frames
+                every turn of a conversation between several people -- it invites keys
+                like `user_name` for whoever spoke last and gives the model no way to
+                attribute a fact to the right person. Naming the speaker fixes the frame.
+                This matters more than it looks: at the ~80% Stage 3 escalation measured
+                on conversational text, this prompt writes nearly every memory in the
+                store, so its framing is the ceiling on everything downstream.
+            event_date: When the turn's content is set, so the model can keep relative
+                references ("last week") interpretable rather than dropping them.
+
         Returns:
             List of extracted memory dictionaries
         """
@@ -227,6 +244,67 @@ Output (valid JSON array only):"""
                 message=message
             )
             
+            # Re-frame for multi-party conversation.
+            #
+            # Prepended rather than templated into EXTRACTION_PROMPT so the base prompt --
+            # and therefore the legacy profile -- is untouched and remains directly
+            # comparable. The instructions below are about conversational structure
+            # (several speakers, third-person narrative, past events); nothing here is
+            # specific to any dataset.
+            if SPEAKER_AWARE_EXTRACTION and speaker:
+                preamble = (
+                    f"This is a conversation between several people. The current turn is "
+                    f"spoken by {speaker}.\n"
+                    f"- Extract facts about ANY person mentioned, not only about a 'user'.\n"
+                    f"- Attribute correctly: a fact {speaker} states about someone else "
+                    f"belongs to that person, not to {speaker}.\n"
+                    f"- Do NOT invent generic keys like 'user_name'. Name the subject.\n"
+                    f"- Past events are worth remembering; use type 'event' for things "
+                    f"that happened and 'fact' for stable information.\n"
+                )
+                if event_date:
+                    preamble += (
+                        f"- This turn takes place on {event_date}. Resolve relative time "
+                        f"references ('last week', 'yesterday') against that date and "
+                        f"keep them in the value.\n"
+                    )
+                # OVER-COMPRESSION IS THE MEASURED FAILURE MODE.
+                #
+                # Every example in the base prompt has a bare-token value -- "Alex",
+                # "Google", "dark mode" -- which teaches maximal compression. On
+                # conversational input that produces memories like
+                #     charity race: 18 May 2023
+                # from a turn that also said the race raised awareness for mental health.
+                # The date survives, the purpose is gone, and "what did the race raise
+                # awareness for" is then unanswerable from a memory that is otherwise
+                # about exactly the right thing. Retrieval cannot recover a detail that
+                # extraction discarded, so this bounds every downstream component.
+                #
+                # Two rules address it: values must stand alone, and one turn may yield
+                # several memories rather than being squeezed into one.
+                preamble += (
+                    "\nVALUE QUALITY -- this matters more than brevity:\n"
+                    "- Each value must be SELF-CONTAINED: understandable on its own, "
+                    "without the key and without the original sentence. Someone reading "
+                    "only the value should learn the fact.\n"
+                    "- KEEP the specifics that make a fact answerable: what it was for, "
+                    "why, with whom, where, how much, which one. Do not reduce a fact to "
+                    "its date or its bare subject.\n"
+                    "- Emit ONE MEMORY PER DISTINCT FACT. A turn mentioning an event, its "
+                    "purpose and a realisation about it is three memories, not one.\n"
+                    "- Record what someone IS or HAS as well as what they DID: "
+                    "relationship status, where they live, what they own.\n"
+                    "\nGood:  {\"key\": \"charity race\", \"value\": \"ran a charity race "
+                    "on 18 May 2023 raising awareness for mental health\"}\n"
+                    "Bad:   {\"key\": \"charity race\", \"value\": \"18 May 2023\"}   "
+                    "(purpose lost)\n"
+                    "Good:  {\"key\": \"relationship status\", \"value\": \"single since "
+                    "her breakup in 2019\"}\n"
+                    "Bad:   {\"key\": \"breakup\", \"value\": \"after 2019\"}   "
+                    "(status not stated)\n"
+                )
+                prompt = preamble + "\n" + prompt
+
             # Add stage 2 hint if available
             if stage2_hint:
                 prompt += f"\n\nHINT: Stage 2 detected possible {stage2_hint} type."
@@ -296,49 +374,90 @@ Output (valid JSON array only):"""
         return response.content[0].text
     
     def _call_groq(self, prompt: str) -> str:
-        """Call Groq API with automatic key rotation on rate limits"""
+        """
+        Call Groq API with key rotation AND exponential backoff on rate limits.
+
+        Previously the attempt count was `len(clients)`, so a single-key deployment made
+        exactly one attempt with no backoff and any transient 429 propagated. That is
+        survivable for a demo but fatal for a long batch run (a benchmark makes tens of
+        thousands of these calls), so attempts are now floored at
+        STAGE_3_MAX_ATTEMPTS and each retry sleeps.
+
+        Key rotation is retained and still happens first on each retry -- with multiple
+        accounts, another key may have quota even when this one does not.
+        """
         clients = _get_groq_client()
         global _current_groq_key_index
-        
-        # Try all available keys
-        max_retries = len(clients)
-        for attempt in range(max_retries):
+
+        max_attempts = max(len(clients), STAGE_3_MAX_ATTEMPTS)
+        for attempt in range(max_attempts):
             try:
                 client = clients[_current_groq_key_index]
-                
+
                 response = client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=STAGE_3_MAX_TOKENS,
                     temperature=STAGE_3_TEMPERATURE,
                 )
-                
+
                 return response.choices[0].message.content
-                
+
             except Exception as e:
                 error_str = str(e)
-                # Check if it's a rate limit error (429)
-                if "429" in error_str or "rate_limit" in error_str.lower() or "too many requests" in error_str.lower():
-                    if attempt < max_retries - 1:  # Not the last attempt
-                        logger.warning(f"Rate limit hit on key #{_current_groq_key_index + 1}, rotating to next key...")
-                        _rotate_groq_key()
-                        self.key_rotation_count += 1
-                        continue
-                    else:
-                        logger.error(f"Rate limit hit on all {max_retries} API keys")
-                        raise
-                else:
-                    # Not a rate limit error, re-raise
+                lowered = error_str.lower()
+                # Transient: rate limits plus upstream capacity/gateway errors, which
+                # behave the same way (wait and retry) even though they are not 429s.
+                is_transient = (
+                    "429" in error_str
+                    or "rate_limit" in lowered
+                    or "too many requests" in lowered
+                    or "overloaded" in lowered
+                    or "503" in error_str
+                    or "502" in error_str
+                    or "504" in error_str
+                )
+                if not is_transient or attempt == max_attempts - 1:
+                    if is_transient:
+                        logger.error(
+                            f"Rate limited after {max_attempts} attempts "
+                            f"({len(clients)} key(s))"
+                        )
                     raise
-        
-        # Should not reach here
-        raise Exception("Failed to call Groq API after trying all keys")
+
+                if len(clients) > 1:
+                    _rotate_groq_key()
+                    self.key_rotation_count += 1
+
+                # Prefer the provider's own hint ("try again in 4.2s") when present.
+                delay = None
+                hint = re.search(r"try again in ([0-9.]+)s", error_str, re.IGNORECASE)
+                if hint:
+                    try:
+                        delay = float(hint.group(1))
+                    except ValueError:
+                        delay = None
+                if delay is None:
+                    delay = min(
+                        STAGE_3_BACKOFF_BASE * (2 ** attempt), STAGE_3_BACKOFF_MAX
+                    )
+                # Jitter so concurrent benchmark workers do not retry in lockstep.
+                delay += random.uniform(0, 0.5 * delay + 0.1)
+                logger.warning(
+                    f"Transient Groq error (attempt {attempt + 1}/{max_attempts}), "
+                    f"sleeping {delay:.1f}s: {error_str[:120]}"
+                )
+                time.sleep(delay)
+
+        # Unreachable: the loop either returns or raises on its final attempt.
+        raise RuntimeError("Failed to call Groq API after exhausting all attempts")
     
     def _parse_and_validate(
         self, 
         response_text: str, 
         original_message: str,
-        turn_number: int
+        turn_number: int,
+        attempt: int = 0
     ) -> List[Dict]:
         """
         Parse LLM response and validate against schema.
@@ -347,6 +466,8 @@ Output (valid JSON array only):"""
             response_text: Raw LLM response
             original_message: Original user message
             turn_number: Current turn number
+            attempt: 0 on the first parse, 1 when re-parsing a retry response.
+                Retries are capped at one; see the JSONDecodeError handler.
         
         Returns:
             List of validated memory dictionaries
@@ -407,7 +528,12 @@ Output (valid JSON array only):"""
             logger.error(f"Failed to parse LLM JSON response: {e}")
             logger.debug(f"Response was: {response_text[:200]}")
             
-            # Retry once with error feedback
+            # Retry once, and only once. Without the attempt guard a model that
+            # never returns JSON recurses until RecursionError, burning one API
+            # call per frame.
+            if attempt > 0:
+                logger.error("Giving up on this turn after one failed retry")
+                return []
             return self._retry_with_error(response_text, original_message, turn_number, str(e))
         
         except Exception as e:
@@ -437,7 +563,7 @@ Output (valid JSON array only):"""
         
         try:
             response_text = self._call_llm(retry_prompt)
-            return self._parse_and_validate(response_text, original_message, turn_number)
+            return self._parse_and_validate(response_text, original_message, turn_number, attempt=1)
         except Exception as e:
             logger.error(f"Retry also failed: {e}")
             return []
