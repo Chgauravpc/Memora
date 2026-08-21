@@ -25,9 +25,25 @@ from .config import (
     STAGE_3_BACKOFF_MAX,
     SPEAKER_AWARE_EXTRACTION,
     UPDATE_PATTERNS,
+    EXTRACTION_CACHE_VERSION,
 )
+from .extraction_cache import build_key, get_extraction_cache
 
 logger = logging.getLogger(__name__)
+
+# Why a Stage 3 call produced nothing.
+#
+# `extract()` returns [] for a turn that genuinely held no facts, for a truncated JSON
+# response, for a dead API key and for a schema violation -- four situations with completely
+# different fixes, reported identically. At the measured ~19% empty rate that is roughly one
+# in five extraction calls whose outcome is unknown, and it is how a decommissioned model
+# produced a silent 0% score with no error anywhere in the scorecard.
+#
+# The distinction is also load-bearing for the cache: CLEAN is the only reason safe to store.
+EMPTY_REASON_CLEAN = "clean_empty"        # model replied, valid JSON, genuinely no facts
+EMPTY_REASON_PARSE = "parse_error"        # JSON did not parse, even after the one retry
+EMPTY_REASON_SCHEMA = "invalid_schema"    # parsed, but not a list / no item passed validation
+EMPTY_REASON_API = "api_error"            # the call itself raised
 
 # Lazy imports for LLM clients
 _openai_client = None
@@ -193,7 +209,13 @@ Output (valid JSON array only):"""
         self.total_response_time_ms = 0.0
         self.api_call_count = 0
         self.key_rotation_count = 0
-        
+
+        # Why the most recent extract() returned nothing. None means it returned memories.
+        self.last_empty_reason: Optional[str] = None
+        # Tally across the process, so a run can report WHY extraction came up empty rather
+        # than only how often. Surfaced through empty_reason_counts().
+        self.empty_reasons: Dict[str, int] = {}
+
         # Log API key configuration
         if self.provider == "groq" and len(GROQ_API_KEYS) > 1:
             logger.info(f"LLM Extractor initialized (provider={self.provider}, model={self.model}, keys={len(GROQ_API_KEYS)})")
@@ -308,7 +330,38 @@ Output (valid JSON array only):"""
             # Add stage 2 hint if available
             if stage2_hint:
                 prompt += f"\n\nHINT: Stage 2 detected possible {stage2_hint} type."
-            
+
+            self.last_empty_reason = None
+
+            # Cache lookup.
+            #
+            # Keyed on the finished prompt, so every input that shapes the result -- message,
+            # context, speaker, event date, hint, and the prompt template itself -- is
+            # already covered without maintaining a list of them. A hit skips the API call
+            # entirely and, more importantly, guarantees this turn contributes exactly the
+            # memories it contributed last time.
+            cache = get_extraction_cache()
+            cache_key = build_key(
+                prompt=prompt,
+                provider=self.provider,
+                model=self.model,
+                temperature=STAGE_3_TEMPERATURE,
+                max_tokens=STAGE_3_MAX_TOKENS,
+                turn_number=turn_number,
+                version=EXTRACTION_CACHE_VERSION,
+            ) if cache.enabled else None
+
+            if cache_key is not None:
+                cached = cache.get(cache_key)
+                if cached is not None:
+                    self.extraction_count += len(cached)
+                    if not cached:
+                        self._note_empty(EMPTY_REASON_CLEAN)
+                    logger.debug(
+                        f"Stage 3 cache hit for turn {turn_number} ({len(cached)} memories)"
+                    )
+                    return cached
+
             # Call LLM with timing
             logger.debug(f"Calling {self.provider} LLM...")
             start_time = time.time()
@@ -318,19 +371,43 @@ Output (valid JSON array only):"""
             self.api_call_count += 1
             logger.info(f"LLM API call completed in {response_time_ms:.2f}ms")
             logger.debug(f"LLM response received: {response_text[:100]}...")
-            
+
             memories = self._parse_and_validate(response_text, message, turn_number)
-            
+
             self.extraction_count += len(memories)
-            
+
+            if not memories and self.last_empty_reason is None:
+                # Parsed fine and yielded nothing -- a real "no facts here".
+                self._note_empty(EMPTY_REASON_CLEAN)
+
+            # Store only clean outcomes. A truncated response or a rejected schema is a
+            # transient failure; freezing it would replay that failure on every future run
+            # of this conversation and quietly cap the score.
+            if cache_key is not None and (memories or self.last_empty_reason == EMPTY_REASON_CLEAN):
+                cache.put(cache_key, memories, meta={
+                    "turn_number": turn_number,
+                    "model": self.model,
+                    "provider": self.provider,
+                })
+
             logger.info(f"Stage 3 extracted {len(memories)} memories from turn {turn_number}")
             return memories
-            
+
         except Exception as e:
             logger.error(f"Stage 3 extraction failed at line {e.__traceback__.tb_lineno}: {type(e).__name__}: {e}")
             import traceback
             logger.debug(f"Full traceback: {traceback.format_exc()}")
+            self._note_empty(EMPTY_REASON_API)
             return []
+
+    def _note_empty(self, reason: str) -> None:
+        """Record why this call produced no memories."""
+        self.last_empty_reason = reason
+        self.empty_reasons[reason] = self.empty_reasons.get(reason, 0) + 1
+
+    def empty_reason_counts(self) -> Dict[str, int]:
+        """Copy of the empty-reason tally, for the results file."""
+        return dict(self.empty_reasons)
     
     def _call_llm(self, prompt: str) -> str:
         """Call the configured LLM provider"""
@@ -488,6 +565,7 @@ Output (valid JSON array only):"""
             
             if not isinstance(extracted, list):
                 logger.warning(f"LLM returned non-list: {type(extracted)}")
+                self._note_empty(EMPTY_REASON_SCHEMA)
                 return []
             
             # Validate and enrich each memory
@@ -521,6 +599,11 @@ Output (valid JSON array only):"""
                 
                 validated_memories.append(memory)
             
+            # A non-empty response whose every item failed validation is a schema problem,
+            # not an empty turn -- and must not be cached as one.
+            if extracted and not validated_memories:
+                self._note_empty(EMPTY_REASON_SCHEMA)
+
             logger.debug(f"Validated {len(validated_memories)}/{len(extracted)} memories")
             return validated_memories
             
@@ -533,11 +616,13 @@ Output (valid JSON array only):"""
             # call per frame.
             if attempt > 0:
                 logger.error("Giving up on this turn after one failed retry")
+                self._note_empty(EMPTY_REASON_PARSE)
                 return []
             return self._retry_with_error(response_text, original_message, turn_number, str(e))
-        
+
         except Exception as e:
             logger.error(f"Validation error: {e}")
+            self._note_empty(EMPTY_REASON_SCHEMA)
             return []
     
     def _retry_with_error(
@@ -566,6 +651,7 @@ Output (valid JSON array only):"""
             return self._parse_and_validate(response_text, original_message, turn_number, attempt=1)
         except Exception as e:
             logger.error(f"Retry also failed: {e}")
+            self._note_empty(EMPTY_REASON_API)
             return []
     
     def detect_update_intent(self, message: str) -> bool:

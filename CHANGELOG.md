@@ -34,6 +34,30 @@ the score trajectory. All numbers so far are single-conversation smoke tests; a 
   only text, so multi-speaker attribution and event time were unrecoverable.
 - **`scripts/start_backends.sh`** — docker-or-native backend startup with musl-preferring
   Qdrant asset selection and `setsid` detachment.
+- **`src/extraction_cache.py`** — content-addressed memoisation of Stage 3, keyed on the
+  fully-assembled prompt plus provider/model/temperature/max-tokens/turn. Reasoning models do
+  not honour temperature 0 the way the previous non-reasoning model did: the same
+  conversation re-ingested twice built stores of 769 and 431 memories, a swing larger than
+  every effect being measured. Caching removes the variance at source instead of averaging
+  over it, and makes a re-ingest free and bit-identical. Failures are never cached — a
+  truncated response or dead key would otherwise be frozen and replayed as "nothing worth
+  remembering". On by default for benchmark runs (`--no-extraction-cache` to disable), off
+  for the library.
+- **Stage 3 empty-reason instrumentation** — `LLMExtractor.last_empty_reason` /
+  `empty_reason_counts()`, surfaced as `ingest.stage3_empty_reasons`. At the measured ~19%
+  empty rate, roughly one extraction call in five had an unknown outcome: a turn with no
+  facts, a truncated response, a schema violation and a dead API key were all reported
+  identically. That is how a decommissioned model produced a silent 0%.
+- **`src/reranker.py`** — cross-encoder reranking (`ms-marco-MiniLM-L-6-v2`, no new
+  dependency) over the top `RERANK_CANDIDATES`, blended at `RERANK_WEIGHT` and applied
+  *before* the top-K cut so it can promote a memory the weighted sum ranked outside it. The
+  5-signal sum scores query-memory relevance through a single bi-encoder number and cannot
+  express "answers this question" as distinct from "is about this topic"; a cross-encoder
+  reads both together. Targets the failure that recurred identically across two full store
+  rebuilds — gold fact retrieved, out-ranked by a plausible-but-wrong one. Off by default.
+- **`--top-k`, `--rerank`, `--no-extraction-cache`** on `run_locomo.py`, and
+  `config.extraction_cache` / `config.rerank*` / `ingest.extraction_cache` in every results
+  file, so a cached or reranked run can never be mistaken for a baseline one.
 
 ### Changed
 
@@ -54,6 +78,13 @@ the score trajectory. All numbers so far are single-conversation smoke tests; a 
   recreated the crowding the ranking change was meant to remove.
 - `BM25_K1` exposed and set to 50 (by request), effectively disabling term-frequency
   saturation. Worth re-sweeping against the 1.2 default.
+- `MAX_MEMORIES_TO_RETRIEVE` and `MEMORY_TOKEN_BUDGET` are env-overridable, defaults
+  unchanged (50 / 3000). Top-K binds on **every** question — the first diagnostic showed
+  `retr` pinned at exactly 50.0 in all five categories — so the reader gets ~12% of the whole
+  store for a question turning on one or two facts. Whether smaller is better is untested
+  (PRD open question 2) and now sweepable with `--top-k`. The flat per-memory token estimate
+  is `TOKENS_PER_MEMORY_ESTIMATE` rather than a literal `50` repeated at two call sites;
+  note the trim still cannot fire at the defaults, since 3000/50 = 60 exceeds top-K 50.
 
 ### Fixed
 

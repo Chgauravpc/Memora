@@ -552,9 +552,82 @@ Metrics: **LLM-as-judge is primary** (that is what published Mem0/Zep LoCoMo num
 comparability is the point of choosing LoCoMo). Token-F1 and exact-match are computed as
 deterministic secondaries — if they diverge sharply from the judge, audit the judge first.
 
+## Reproducibility: the Stage 3 extraction cache
+
+**On by default for benchmark runs.** `--no-extraction-cache` turns it off.
+
+Re-ingesting the same conversation twice, with no code change, produced **769 memories one
+run and 431 the next** — same 419 turns, same 80.4% escalation, same ~19% empty rate. Only
+the store changed. `STAGE_3_TEMPERATURE` is 0.0, which made re-ingest reproducible under the
+old non-reasoning model, but `gpt-oss-120b` spends hidden chain-of-thought before its visible
+reply and that is not bit-exact run to run.
+
+Every A/B therefore compared two different stores, and the difference between stores is
+larger than any retrieval effect being measured. `src/extraction_cache.py` removes the
+variance at its source: Stage 3 results are memoised on disk under `.cache/extraction/`,
+keyed by a hash of the **fully-assembled prompt** plus provider, model, temperature,
+max-tokens and turn number.
+
+Keying on the finished prompt is what makes it safe. The prompt already contains the message,
+the conversation context, the speaker, the event date and any Stage 2 hint — so editing the
+prompt template, the VALUE QUALITY block, or the model invalidates every affected entry
+automatically. There is no list of inputs to keep in sync, which is how a cache like this
+normally goes wrong. The one thing the hash cannot see is a change to the parse/validate
+output shape; bump `EXTRACTION_CACHE_VERSION` for that.
+
+**Failures are never cached.** An empty result from a truncated response, a rejected schema
+or a dead API key is recorded with a reason and skipped, so a transient failure cannot be
+frozen and replayed forever as "this turn had nothing worth remembering". Only genuinely
+empty extractions and non-empty ones are stored.
+
+Practical effect: the first ingest of a conversation costs the usual ~4,200 calls, and every
+re-ingest after it is free and bit-identical. That is what turns a single-conversation
+ablation into a seconds-long loop instead of a six-minute one, and it makes `--reuse-store`
+largely unnecessary — you can rebuild the store exactly instead of reusing a stale one.
+
+Every results file records `ingest.extraction_cache` (hits, misses, writes, hit rate) and
+`config.extraction_cache`, so a cached run and a live run are never confused after the fact.
+
+Also new: `ingest.stage3_empty_reasons` splits the empty rate into `clean_empty` /
+`parse_error` / `invalid_schema` / `api_error`. At ~19% empty that is roughly one extraction
+call in five whose outcome was previously unknown, and it is how a decommissioned model
+produced a silent 0% with no error in the scorecard.
+
+## Retrieval ablations: top-K and reranking
+
+```bash
+# top-K sweep -- the cap binds on EVERY question at its default of 50
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --save-context --force --top-k 15
+
+# cross-encoder reranking
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --save-context --force --rerank
+
+# both
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --save-context --force \
+                     --top-k 15 --rerank
+```
+
+`--top-k` overrides `MAX_MEMORIES_TO_RETRIEVE`. The very first diagnostic showed `retr`
+pinned at exactly 50.0 in every category — the cap was reached on every question — so the
+reader receives ~12% of the entire store for a question that usually turns on one or two
+facts. Whether a smaller, better-ordered context beats it is untested. Lowering it also cuts
+reader tokens proportionally, which is the single biggest line in the token bill.
+
+`--rerank` scores the top `RERANK_CANDIDATES` (50) with a cross-encoder
+(`ms-marco-MiniLM-L-6-v2`, no new dependency) and blends its score with the existing one at
+`RERANK_WEIGHT` (0.7). It runs **before** the top-K cut, so it can promote a memory the
+weighted sum ranked outside the cut — unlike the `MOST RELEVANT` section, which can only
+reorder what ranking already chose. This targets the failure that recurred identically across
+two full store rebuilds: the gold fact was retrieved but out-ranked by a plausible-but-wrong
+one. Model weights download once into `.cache/huggingface/`; scoring is tens of milliseconds
+per question on CPU and never touches ingest.
+
+Both are retrieval-only, so `--reuse-store` is valid for these sweeps. Both are off by
+default and recorded in every results file's `config` block.
+
 ## Changes made to `src/` for this
 
-Two, both minimal and disclosed because they alter the system under test:
+Disclosed because they alter the system under test. The first two predate the cache work:
 
 1. **`src/llm_extractor.py` — Stage 3 retry/backoff.** The attempt count was
    `len(clients)`, so a single-key deployment made exactly **one** attempt with no backoff
@@ -565,8 +638,23 @@ Two, both minimal and disclosed because they alter the system under test:
 2. **`src/config.py`** — the three knobs for the above
    (`STAGE_3_MAX_ATTEMPTS`, `STAGE_3_BACKOFF_BASE`, `STAGE_3_BACKOFF_MAX`), env-overridable
    per the repo convention that config is the single source of truth.
+3. **`src/extraction_cache.py`** (new) — Stage 3 memoisation, above. Off unless
+   `EXTRACTION_CACHE_ENABLED` is set, which the runner does for benchmark runs only, so
+   library behaviour is unchanged.
+4. **`src/llm_extractor.py`** — cache lookup/store around the Stage 3 call, plus
+   `last_empty_reason` / `empty_reason_counts()` so an empty extraction says why. On a cache
+   hit no API call is made; otherwise the path is identical.
+5. **`src/reranker.py`** (new) + a call site in `src/retriever.py` — cross-encoder reranking,
+   above. `RERANK_ENABLED` defaults to False, and a missing model degrades to the existing
+   order rather than raising.
+6. **`src/config.py`** — `MAX_MEMORIES_TO_RETRIEVE` and `MEMORY_TOKEN_BUDGET` became
+   env-overridable (same defaults, 50 and 3000) so top-K can be swept without editing code,
+   and the flat 50-tokens-per-memory trim constant became
+   `TOKENS_PER_MEMORY_ESTIMATE` instead of a literal repeated in two places.
 
-Nothing else in `src/` is touched. The benchmark reads Memora through its public API only.
+Nothing else in `src/` is touched, and every default above reproduces the previously shipped
+behaviour exactly, so the baseline stays measurable. The benchmark reads Memora through its
+public API only.
 
 ## Known limitations
 

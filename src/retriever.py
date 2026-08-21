@@ -38,9 +38,14 @@ from .config import (
     MULTIHOP_EXTRA_LIMIT,
     MULTIHOP_SEED_MEMORIES,
     QUERY_AWARE_RETRIEVAL,
+    RERANK_CANDIDATES,
+    RERANK_ENABLED,
+    RERANK_MODEL,
+    RERANK_WEIGHT,
     RRF_K,
     SPEAKER_MATCH_BOOST,
     TEMPORAL_INTENT_BOOST,
+    TOKENS_PER_MEMORY_ESTIMATE,
     SEMANTIC_SEARCH_ENABLED,
     SEMANTIC_SEARCH_LIMIT,
     MIN_SEMANTIC_SCORE,
@@ -59,6 +64,7 @@ from .config import (
     RECENCY_FALLBACK_SEMANTIC_SCORE,
 )
 from .redis_store import RedisStore
+from .reranker import rerank
 
 logger = logging.getLogger(__name__)
 
@@ -617,14 +623,26 @@ class MemoryRetriever:
         
         # Filter out superseded memories (Phase 3)
         ranked_memories = self._filter_superseded(ranked_memories)
-        
+
+        # Cross-encoder rerank, before the top-K cut so it can promote a memory that the
+        # weighted sum ranked outside the cut. Running it after would only reorder what was
+        # already going to be sent, which is the limitation of the MOST RELEVANT section.
+        if RERANK_ENABLED and ranked_memories:
+            ranked_memories = rerank(
+                query=current_message,
+                memories=ranked_memories,
+                model_name=RERANK_MODEL,
+                candidates=RERANK_CANDIDATES,
+                weight=RERANK_WEIGHT,
+            )
+
         # Take top K
         top_memories = ranked_memories[:MAX_MEMORIES_TO_RETRIEVE]
-        
+
         # Budget check
-        estimated_tokens = len(top_memories) * 50
+        estimated_tokens = len(top_memories) * TOKENS_PER_MEMORY_ESTIMATE
         if estimated_tokens > MEMORY_TOKEN_BUDGET:
-            max_count = MEMORY_TOKEN_BUDGET // 50
+            max_count = MEMORY_TOKEN_BUDGET // TOKENS_PER_MEMORY_ESTIMATE
             top_memories = top_memories[:max_count]
             logger.warning(f"Trimmed memories to {max_count} to fit token budget")
         
@@ -703,13 +721,12 @@ class MemoryRetriever:
         # Take top K
         top_memories = all_memories[:MAX_MEMORIES_TO_RETRIEVE]
         
-        # Budget check (estimate ~50 tokens per memory on average)
-        # This is a rough estimate; Phase 2+ will have more precise token counting
-        estimated_tokens = len(top_memories) * 50
-        
+        # Budget check (flat per-memory estimate, not a tokenizer count)
+        estimated_tokens = len(top_memories) * TOKENS_PER_MEMORY_ESTIMATE
+
         if estimated_tokens > MEMORY_TOKEN_BUDGET:
             # Trim to fit budget
-            max_count = MEMORY_TOKEN_BUDGET // 50
+            max_count = MEMORY_TOKEN_BUDGET // TOKENS_PER_MEMORY_ESTIMATE
             top_memories = top_memories[:max_count]
             logger.warning(f"Trimmed memories to {max_count} to fit token budget")
         

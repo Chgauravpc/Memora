@@ -336,7 +336,30 @@ def main() -> int:
                          "Fast iteration on the reader; invalid after extraction changes")
     ap.add_argument("--max-turns", type=int, default=None,
                     help="Ingest only the first N turns per conversation")
+    ap.add_argument("--no-extraction-cache", action="store_true",
+                    help="Call the LLM for every turn instead of reusing cached Stage 3 "
+                         "results. The cache is ON by default for benchmark runs because "
+                         "reasoning models are not reproducible at temperature 0 -- the "
+                         "same conversation re-ingested twice built stores of 769 and 431 "
+                         "memories, which swamps every effect being measured. Disable this "
+                         "only to measure that variance deliberately")
+    ap.add_argument("--rerank", action="store_true",
+                    help="Rerank retrieved memories with a cross-encoder before the top-K "
+                         "cut. Changes the system under test; recorded in every result file")
+    ap.add_argument("--top-k", type=int, default=None,
+                    help="Override MAX_MEMORIES_TO_RETRIEVE. The cap binds on every "
+                         "question at its default of 50, so this is the sweep that matters")
     args = ap.parse_args()
+
+    # Set before workers are spawned: src/config.py freezes env into module constants at
+    # import time, so a subprocess inherits whatever is set here and nothing later can
+    # change it. Same reason workers are processes rather than threads.
+    if not args.no_extraction_cache:
+        os.environ.setdefault("EXTRACTION_CACHE_ENABLED", "true")
+    if args.rerank:
+        os.environ["RERANK_ENABLED"] = "true"
+    if args.top_k is not None:
+        os.environ["MAX_MEMORIES_TO_RETRIEVE"] = str(args.top_k)
 
     extra: List[str] = []
     if args.no_adversarial:

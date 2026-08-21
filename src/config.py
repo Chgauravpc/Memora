@@ -70,8 +70,24 @@ EXTRACTION_KEYWORDS = {
 MEMORY_TYPES = ["preference", "constraint", "entity", "instruction", "commitment", "fact", "event"]
 
 # Retrieval Configuration
-MAX_MEMORIES_TO_RETRIEVE = 50  # Top K memories to inject (increased for better long-term recall)
-MEMORY_TOKEN_BUDGET = 3000  # Total token budget for retrieved memories
+#
+# Env-overridable so top-K can be swept without editing config. This is the one retrieval
+# parameter that binds on EVERY question: the first LoCoMo diagnostic showed `retr` pinned at
+# exactly 50.0 in every category, i.e. the cap was reached every single time. Against a store
+# of a few hundred memories that means the reader is handed ~12% of everything known,
+# selected substantially by type and recency rather than by relevance, for a question that
+# usually turns on one or two facts. Whether a smaller, better-ordered context outperforms it
+# is untested (PRD open question 2) and is a retrieval-only change, so `--reuse-store` is
+# valid for the sweep.
+MAX_MEMORIES_TO_RETRIEVE = int(os.getenv("MAX_MEMORIES_TO_RETRIEVE", "50"))
+MEMORY_TOKEN_BUDGET = int(os.getenv("MEMORY_TOKEN_BUDGET", "3000"))
+
+# Tokens assumed per rendered memory when trimming to the budget. This is a flat estimate,
+# not a tokenizer count. Worth knowing: at the shipped defaults the trim can never fire,
+# because MEMORY_TOKEN_BUDGET // TOKENS_PER_MEMORY = 60 exceeds MAX_MEMORIES_TO_RETRIEVE = 50 --
+# so the budget is currently vestigial and top-K is the only thing bounding context size.
+# Lowering top-K keeps it that way; raising it past 60 makes the budget bind instead.
+TOKENS_PER_MEMORY_ESTIMATE = int(os.getenv("TOKENS_PER_MEMORY_ESTIMATE", "50"))
 
 # Phase 2: Semantic Search Configuration
 SEMANTIC_SEARCH_ENABLED = True  # Enable vector-based semantic search
@@ -489,6 +505,60 @@ MULTIHOP_EXTRA_LIMIT = int(os.getenv("MULTIHOP_EXTRA_LIMIT", "30"))
 FREQUENCY_DECAY_RATE = 0.05         # How fast frequency score decays
 FREQUENCY_MAX_ACCESSES = 20         # Normalize access count against this
 ACCESS_RECENCY_WEIGHT = 0.6         # Weight for recent accesses vs total count
+
+# ---------------------------------------------------------------- cross-encoder reranking
+#
+# The 5-signal sum scores a memory against the query through ONE number -- a cosine, or a
+# rank-fused stand-in for one -- and then adds four signals that never look at the query at
+# all. It therefore cannot express "this memory answers this question" as distinct from
+# "this memory is about the same topic". A cross-encoder can: it reads query and memory
+# text jointly and is trained on exactly that judgement.
+#
+# This targets the failure that recurred identically across two full store rebuilds: the
+# gold fact was retrieved but ranked below a plausible-but-wrong one, so it never entered
+# the MOST RELEVANT section and no amount of re-ordering downstream could rescue it. That is
+# a ranking failure by construction, and reranking is the standard answer to it.
+#
+# Cost is a forward pass over (query, memory) pairs for the top RERANK_CANDIDATES only --
+# tens of milliseconds on CPU for 50 pairs, no new dependency (sentence-transformers already
+# ships CrossEncoder). Off by default: it changes the system under test and must be stated.
+RERANK_ENABLED = _flag("RERANK_ENABLED", False)
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+# How many top-ranked candidates get reranked. Beyond this the first-stage ranking is trusted,
+# which is the usual retrieve-then-rerank contract: recall from stage one, precision from two.
+RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", "50"))
+# Blend rather than replace. 1.0 is pure cross-encoder; 0.0 disables it in effect. A blend
+# keeps confidence and type as tie-breakers, which matter for the assistant use case even
+# where they hurt QA -- and it makes the weight itself ablatable rather than a hidden choice.
+RERANK_WEIGHT = float(os.getenv("RERANK_WEIGHT", "0.7"))
+
+# ---------------------------------------------------------------- Stage 3 extraction cache
+#
+# Content-addressed memoisation of Stage 3 LLM extraction, keyed on the exact prompt text
+# plus provider/model/decoding parameters. Any edit to the prompt, model or temperature
+# changes the key, so a stale cache cannot silently serve results from a pipeline that no
+# longer exists -- the failure mode that makes `--reuse-store` dangerous.
+#
+# WHY: re-ingesting the same conversation twice, with no code change, produced 769 memories
+# on one run and 431 on the next. Reasoning models do not honour temperature 0 the way the
+# previous non-reasoning model did: hidden chain-of-thought is not bit-exact, so the store is
+# rebuilt differently every time and any A/B compares two different stores. That swing is
+# larger than every effect being measured. The cache removes the variance at its source
+# rather than averaging over it, and as a side effect makes a re-ingest nearly free, which is
+# what turns a single-conversation ablation into a seconds-long loop.
+#
+# Only clean results are cached -- see EMPTY_REASON_* in llm_extractor. An empty list caused
+# by a truncated response or a dead API key must never be frozen into the cache and replayed
+# as "this turn had nothing worth remembering".
+#
+# Off by default so library behaviour is unchanged; the benchmark runner turns it on.
+EXTRACTION_CACHE_ENABLED = _flag("EXTRACTION_CACHE_ENABLED", False)
+EXTRACTION_CACHE_DIR = os.getenv(
+    "EXTRACTION_CACHE_DIR", str(PROJECT_ROOT / ".cache" / "extraction")
+)
+# Bump when _parse_and_validate's output shape changes; the prompt hash cannot see that, so
+# this is the one invalidation the key does not derive automatically.
+EXTRACTION_CACHE_VERSION = "1"
 
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

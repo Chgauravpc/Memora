@@ -59,12 +59,17 @@ class Stage3Counter:
         # scorecard would distinguish them. An empty rate near 100% means broken, not
         # uneventful.
         self.empty = 0
+        # The extractor itself, kept so the run can report WHY calls came up empty. `empty`
+        # alone cannot separate a turn with no facts from a truncated response or a dead
+        # key, and those have opposite fixes.
+        self.extractor: Any = None
 
     def attach(self, memory_system: Any) -> bool:
         extractor = getattr(getattr(memory_system, "extractor", None), "llm_extractor", None)
         if extractor is None or not hasattr(extractor, "extract"):
             return False
 
+        self.extractor = extractor
         original = extractor.extract
 
         def counting_extract(*args: Any, **kwargs: Any) -> Any:
@@ -107,6 +112,31 @@ def _reader_version() -> str:
         return "unknown"
 
 
+def _empty_reasons(counter: Any) -> Dict[str, int]:
+    """Why Stage 3 returned nothing, if the extractor tracks it.
+
+    Tolerates an older extractor without the attribute so a results file from a mixed
+    checkout still parses.
+    """
+    extractor = getattr(counter, "extractor", None)
+    getter = getattr(extractor, "empty_reason_counts", None)
+    if getter is None:
+        return {}
+    try:
+        return getter()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _cache_stats() -> Dict[str, Any]:
+    """Stage 3 cache counters, or an empty dict if the cache module is unavailable."""
+    try:
+        from src.extraction_cache import get_extraction_cache
+        return get_extraction_cache().stats()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _architecture_snapshot() -> Dict[str, Any]:
     """Which memory-architecture mechanisms were active for this run.
 
@@ -138,6 +168,16 @@ def _architecture_snapshot() -> Dict[str, Any]:
         "stage3_max_tokens": getattr(c, "STAGE_3_MAX_TOKENS", None),
         "min_confidence": getattr(c, "MIN_CONFIDENCE_TO_STORE", None),
         "max_memories": getattr(c, "MAX_MEMORIES_TO_RETRIEVE", None),
+        # Reranking changes what reaches the reader, so it belongs in the snapshot for the
+        # same reason the ranking weights do.
+        "rerank": getattr(c, "RERANK_ENABLED", None),
+        "rerank_model": getattr(c, "RERANK_MODEL", None) if getattr(c, "RERANK_ENABLED", False) else None,
+        "rerank_weight": getattr(c, "RERANK_WEIGHT", None) if getattr(c, "RERANK_ENABLED", False) else None,
+        "rerank_candidates": getattr(c, "RERANK_CANDIDATES", None) if getattr(c, "RERANK_ENABLED", False) else None,
+        # A cached run and a live run are not the same experiment: the cache is what makes
+        # a re-ingest reproducible, so whether it was on decides how much a store-size
+        # comparison between two runs is worth.
+        "extraction_cache": getattr(c, "EXTRACTION_CACHE_ENABLED", None),
     }
 
 
@@ -371,8 +411,16 @@ def run_conversation(
             "stage3_failures": counter.failures,
             "stage3_empty": counter.empty,
             "stage3_empty_rate": round(counter.empty / max(ingest_stage3_calls, 1), 4),
+            # Breaks the empty rate into clean_empty / parse_error / invalid_schema /
+            # api_error. Anything other than clean_empty is lost recall with a fixable
+            # cause, not a turn that held nothing.
+            "stage3_empty_reasons": _empty_reasons(counter),
             "stage3_instrumented": instrumented,
             "memories_in_store": total_memories,
+            # Hit rate says how much of this store was replayed rather than re-extracted.
+            # A run at 100% hits is bit-identical to the run that populated the cache,
+            # which is exactly what makes a retrieval A/B readable.
+            "extraction_cache": _cache_stats(),
         },
         "qa": {
             "count": len(records),
