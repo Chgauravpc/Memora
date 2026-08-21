@@ -34,7 +34,7 @@ python test_customer_conversation.py     # 60-turn customer-service scenario
 python test_comprehensive_1000_turn.py   # 1000 turns, all phases (slow, burns API quota)
 ```
 
-**`python -m benchmarks.selftest` is the fast check and the closest thing to a unit suite** — 172 logic assertions covering config invariants, prompt contents, ranking, dedup keys, the entity index, extraction-cache keying and failure handling, cross-encoder reranking, and the results reader/writer contract. It needs no Redis, no Qdrant, and no network, so it runs anywhere in seconds. Run it before and after any change to `src/` or `benchmarks/`. It is the only test that catches a config or prompt regression before you spend an hour of compute on a benchmark run.
+**`python -m benchmarks.selftest` is the fast check and the closest thing to a unit suite** — 173 logic assertions covering config invariants, prompt contents, ranking, dedup keys, the entity index, extraction-cache keying and failure handling, cross-encoder reranking, and the results reader/writer contract. It needs no Redis, no Qdrant, and no network, so it runs anywhere in seconds. Run it before and after any change to `src/` or `benchmarks/`. It is the only test that catches a config or prompt regression before you spend an hour of compute on a benchmark run.
 
 There is **no pytest suite** — `pytest` is listed in `requirements_evaluation.txt` but no test functions are collected, and `make test` is a stub.
 

@@ -17,7 +17,9 @@ process without a reload.
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import logging
 import os
 import sys
 from typing import Dict, List
@@ -35,6 +37,26 @@ def _reload(profile: str, **env):
     for mod in [m for m in sys.modules if m.startswith("src")]:
         del sys.modules[mod]
     return importlib.import_module("src.retriever")
+
+
+@contextlib.contextmanager
+def _quiet(*logger_names: str):
+    """Silence loggers around a check that deliberately triggers a failure.
+
+    Several checks here assert on behaviour that only happens when something goes wrong --
+    a model that never emits JSON, a reranker that cannot load. Those paths log at ERROR
+    and WARNING by design, which is correct in production and actively harmful in a test
+    suite: a passing run fills with red-looking tracebacks and stops being readable as a
+    green light. Scoped narrowly so a genuinely unexpected error still surfaces.
+    """
+    levels = [(logging.getLogger(n), logging.getLogger(n).level) for n in logger_names]
+    for lg, _ in levels:
+        lg.setLevel(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        for lg, original in levels:
+            lg.setLevel(original)
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
@@ -412,7 +434,9 @@ def test_extraction_quality_prompt() -> None:
     bad.model = "test-model"
     bad.last_empty_reason = None
     bad.empty_reasons = {}
-    out = bad.extract("The charity race was great", 1, speaker="Melanie")
+    # Expected to fail: silence the ERROR logging it emits by design.
+    with _quiet("src.llm_extractor"):
+        out = bad.extract("The charity race was great", 1, speaker="Melanie")
     check("unparseable output returns empty, not an exception", out == [])
     check("unparseable output retries at most once", bad_calls["n"] == 2,
           f"took {bad_calls['n']} LLM calls; unbounded recursion burns quota per frame")
@@ -529,9 +553,11 @@ def test_extraction_cache() -> None:
     bad.last_empty_reason = None
     bad.empty_reasons = {}
 
-    bad.extract("A turn that breaks the parser", 7, speaker="Melanie")
-    before = bad_calls["n"]
-    bad.extract("A turn that breaks the parser", 7, speaker="Melanie")
+    # Expected to fail: silence the ERROR logging it emits by design.
+    with _quiet("src.llm_extractor"):
+        bad.extract("A turn that breaks the parser", 7, speaker="Melanie")
+        before = bad_calls["n"]
+        bad.extract("A turn that breaks the parser", 7, speaker="Melanie")
     check("a parse failure is not cached", bad_calls["n"] > before,
           "caching it would replay the failure on every future run of this conversation")
     check("the failure is attributed, not counted as an empty turn",
@@ -569,9 +595,19 @@ def test_reranker() -> None:
         {"memory_id": "b", "key": "k", "value": "the actual answer", "retrieval_score": 0.5},
     ]
 
-    check("no model means the input order is returned untouched",
-          [m["memory_id"] for m in rr.rerank("q", docs, "no-such-model/xxx")] == ["a", "b"],
+    # Simulate a model that already failed to load, rather than naming a bogus repo.
+    # Passing a fake name here would send a real request to HuggingFace -- which this
+    # suite promises never to do, and which on an offline or firewalled machine hangs on
+    # a timeout instead of returning instantly. Setting the latch exercises the identical
+    # branch (_get_model returns None) with no network at all.
+    rr._load_failed = True
+    rr._model = None
+    check("a reranker that failed to load returns the input order untouched",
+          [m["memory_id"] for m in rr.rerank("q", docs, "irrelevant")] == ["a", "b"],
           "a missing reranker must degrade, not raise")
+    check("is_available reports the failure rather than leaving it to be inferred",
+          rr.is_available("irrelevant") is False,
+          "a silent no-op looks exactly like a reranker that did not help")
 
     rr.reset()
 
