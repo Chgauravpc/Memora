@@ -625,6 +625,98 @@ per question on CPU and never touches ingest.
 Both are retrieval-only, so `--reuse-store` is valid for these sweeps. Both are off by
 default and recorded in every results file's `config` block.
 
+## Sweeping retrieval for free — `benchmarks.sweep`
+
+Every retrieval parameter changes only *which memories reach the reader*, and that is
+decidable without a reader. `benchmarks.sweep` replays the questions against an
+already-populated store, measures whether the gold answer reached the context and where it
+ranked, and prints every configuration side by side. **No reader, no judge, no ingest, no
+API key.** It costs wall clock and nothing else.
+
+```bash
+python -m benchmarks.sweep --grid default        # ~13 single-variable arms
+python -m benchmarks.sweep --grid topk
+python -m benchmarks.sweep --grid full --max-questions 50
+python -m benchmarks.sweep --configs my_arms.json   # a JSON list of env dicts
+```
+
+Grids available: `default`, `topk`, `rerank`, `bm25`, `recency`, `always_on`, `evidence`,
+`full`. Each arm runs in its own subprocess, because `src/config.py` freezes environment at
+import time — the same reason the benchmark's workers are processes.
+
+Two metrics, because each is blind to something the other sees:
+
+| | what it means | trust it for |
+|---|---|---|
+| `cover` / `present` | fraction of the gold answer's content words in the context, and the share of questions clearing 0.5 — the same function `diagnose.py` uses to call something a retrieval miss | whether a config *loses* answers |
+| `MRR` / `rank` | position of the first retrieved memory that itself carries the answer | anything that changes **order** — reranking, `BM25_K1`, ranking weights |
+
+**Coverage is biased by context size.** More memories means more words means higher
+coverage, mechanically. Never read it as "bigger K wins" — read it as a floor and find the
+*smallest* K whose coverage has not yet started to fall. `ctx` (mean context characters) and
+`cov/kc` (coverage per 1k chars) are printed beside it so that trade stays visible. MRR is
+size-independent and is the one to trust when the two disagree.
+
+**What it cannot see is a reader miss.** A config that puts the answer at rank 1 can still be
+answered wrongly. The sweep produces a *shortlist*, never a result. Grade the winners.
+
+The sweep also refuses to mutate the store it measures: retrieval normally increments
+`access_count` and `last_accessed_turn`, so fifty arms would leave the store measurably
+different from the one the graded run uses, and each arm would be scored against a store the
+previous arm had already altered. `_no_op_access_counts` wraps that away for the duration,
+and the current turn number is read back from the store so recency scores match a real run
+rather than seeing every memory as brand new.
+
+## Working under a one-run-per-day budget
+
+The daily cap is tokens, not requests, and the reader dominates: `MEMORY_TOKEN_BUDGET=3000`
+puts ~3.5k input tokens in front of every question. A single-conversation run that
+**re-ingests** costs roughly 337 Stage-3 calls plus reader and judge — the ingest alone is
+larger than one free account's daily allowance. A run that reuses a cached store costs only
+reader plus judge, which is a small fraction of it.
+
+That asymmetry is the whole plan. Pay for ingest once, then never again.
+
+**Day 1 — buy the store.** One ingest, cache on (the default). Everything after this is
+either free or cheap.
+
+```bash
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --save-context --force
+python -m benchmarks.report && python -m benchmarks.diagnose
+```
+Record: score, floor, `ingest.memories_in_store`, `ingest.stage3_empty_reasons`, and the
+retrieval-vs-reader split.
+
+**Day 1, later — sweep for free.** No further tokens. Run as many arms as you like.
+
+```bash
+python -m benchmarks.sweep --grid default
+python -m benchmarks.sweep --grid bm25
+python -m benchmarks.sweep --grid evidence
+```
+
+**Day 2 onward — grade one or two shortlisted configs.** Ingest is now a cache replay, so
+`--force` is cheap and rebuilds the store *exactly*; prefer it over `--reuse-store`.
+
+```bash
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --save-context --force \
+                     --top-k 15 --rerank
+python -m benchmarks.report && python -m benchmarks.diagnose
+```
+
+Because ingest is free and deterministic, two graded arms often fit in one day's budget
+where previously one did not. Verify with `ingest.extraction_cache.hit_rate` ≈ 1.0.
+
+**One thing worth spending a day on before tuning:** confirm the non-determinism is real, by
+running the same command twice with the cache *off* and comparing
+`ingest.memories_in_store`. If the two differ materially, every pre-cache reading in
+`BENCHMARK_FINDINGS.md` was measuring store variance rather than the change it named.
+
+```bash
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --force --no-extraction-cache
+python run_locomo.py --limit 1 --max-questions 25 --workers 1 --force --no-extraction-cache
+```
+
 ## Changes made to `src/` for this
 
 Disclosed because they alter the system under test. The first two predate the cache work:
@@ -647,7 +739,9 @@ Disclosed because they alter the system under test. The first two predate the ca
 5. **`src/reranker.py`** (new) + a call site in `src/retriever.py` — cross-encoder reranking,
    above. `RERANK_ENABLED` defaults to False, and a missing model degrades to the existing
    order rather than raising.
-6. **`src/config.py`** — `MAX_MEMORIES_TO_RETRIEVE` and `MEMORY_TOKEN_BUDGET` became
+6. **`benchmarks/sweep.py`** (new) — reads Memora through its public retriever only and
+   makes no writes; `src/` is untouched by it.
+7. **`src/config.py`** — `MAX_MEMORIES_TO_RETRIEVE` and `MEMORY_TOKEN_BUDGET` became
    env-overridable (same defaults, 50 and 3000) so top-K can be swept without editing code,
    and the flat 50-tokens-per-memory trim constant became
    `TOKENS_PER_MEMORY_ESTIMATE` instead of a literal repeated in two places.

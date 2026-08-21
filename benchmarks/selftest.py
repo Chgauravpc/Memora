@@ -625,6 +625,57 @@ def test_topk_is_sweepable() -> None:
           f"budget allows {budget // per_mem} memories vs top-K {default_k}")
 
 
+def test_sweep_grids() -> None:
+    """The offline sweep's grids must be well-formed and single-variable."""
+    print("\noffline retrieval sweep")
+    _reload("conversation")
+    from benchmarks.sweep import GRIDS, label, _median
+
+    check("median of an odd list", _median([3, 1, 2]) == 2.0)
+    check("median of an even list", _median([1, 2, 3, 4]) == 2.5)
+    check("median of nothing is None", _median([]) is None)
+
+    check("the default grid starts from the shipped baseline",
+          GRIDS["default"]()[0] == {},
+          "without an unmodified arm there is nothing to compare deltas against")
+
+    for name, build in GRIDS.items():
+        configs = build()
+        check(f"grid '{name}' is non-empty", len(configs) > 0)
+        flat_ok = all(
+            isinstance(c, dict) and all(isinstance(k, str) and isinstance(v, str)
+                                        for k, v in c.items())
+            for c in configs
+        )
+        check(f"grid '{name}' contains only string env pairs", flat_ok,
+              "these are passed straight into a subprocess environment")
+        labels = [label(c) for c in configs]
+        check(f"grid '{name}' has distinct labels", len(set(labels)) == len(labels),
+              f"duplicate labels would collide in the report: {labels}")
+
+    # Every key a grid sets must be one config.py actually reads, or the arm silently
+    # measures the baseline again and looks like "no effect".
+    from src import config as c
+    known = {
+        "MAX_MEMORIES_TO_RETRIEVE", "MEMORY_TOKEN_BUDGET", "TOKENS_PER_MEMORY_ESTIMATE",
+        "RERANK_ENABLED", "RERANK_WEIGHT", "RERANK_CANDIDATES", "BM25_K1", "BM25_B",
+        "RANK_W_SEMANTIC", "RANK_W_TYPE", "RANK_W_RECENCY", "RANK_W_FREQUENCY",
+        "RANK_W_CONFIDENCE", "RECENCY_RETRIEVAL_LIMIT", "ALWAYS_ON_SEMANTIC_FLOOR",
+        "CONTEXT_EVIDENCE_TOP_N", "CONTEXT_EVIDENCE_MAX_CHARS",
+    }
+    used = {k for build in GRIDS.values() for cfg in build() for k in cfg}
+    check("every swept key is a real config knob", used <= known,
+          f"unknown: {sorted(used - known)}")
+    # And the plain (non RANK_W_) names must exist on the config module.
+    missing = [k for k in used
+               if not k.startswith("RANK_W_") and not hasattr(c, k)]
+    check("every swept key exists on src.config", not missing, f"missing: {missing}")
+
+    check("the sweep threshold matches diagnose's",
+          __import__("benchmarks.sweep", fromlist=["x"]).GOLD_PRESENT_THRESHOLD == 0.5,
+          "the two must agree on what 'the answer was there' means")
+
+
 def test_temporal_enrichment() -> None:
     """Deterministic recovery of dates the LLM compressed away."""
     print("\ndeterministic temporal enrichment")
@@ -843,6 +894,7 @@ def main() -> int:
                test_ranking_profiles, test_embedding_text, test_speaker_prompt,
                test_entity_index, test_extraction_quality_prompt,
                test_extraction_cache, test_reranker, test_topk_is_sweepable,
+               test_sweep_grids,
                test_temporal_enrichment, test_context_noise, test_reader_prompt,
                test_results_roundtrip, test_dataset_dates, test_stratified_sampling):
         try:

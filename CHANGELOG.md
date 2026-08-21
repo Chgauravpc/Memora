@@ -55,6 +55,15 @@ the score trajectory. All numbers so far are single-conversation smoke tests; a 
   express "answers this question" as distinct from "is about this topic"; a cross-encoder
   reads both together. Targets the failure that recurred identically across two full store
   rebuilds — gold fact retrieved, out-ranked by a plausible-but-wrong one. Off by default.
+- **`benchmarks/sweep.py`** — compares retrieval configurations offline against an
+  already-populated store, with no reader, no judge, no ingest and no API key. Under a
+  one-graded-run-per-day budget, evaluating eight single-variable ablations the obvious way
+  costs eight days; this shortlists them in an hour for free. Reports coverage (size-biased,
+  use it to find the smallest top-K that has not started losing answers) alongside MRR over
+  the rank of the first gold-bearing memory (size-independent, the honest metric for
+  reranking and BM25 changes). It cannot see a reader miss, so it produces a shortlist, never
+  a result. Wraps `increment_access_count` to a no-op for the duration so sweeping does not
+  mutate the store it is measuring.
 - **`--top-k`, `--rerank`, `--no-extraction-cache`** on `run_locomo.py`, and
   `config.extraction_cache` / `config.rerank*` / `ingest.extraction_cache` in every results
   file, so a cached or reranked run can never be mistaken for a baseline one.
