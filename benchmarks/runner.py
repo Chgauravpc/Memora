@@ -336,6 +336,12 @@ def main() -> int:
                          "Fast iteration on the reader; invalid after extraction changes")
     ap.add_argument("--max-turns", type=int, default=None,
                     help="Ingest only the first N turns per conversation")
+    ap.add_argument("--ingest-only", action="store_true",
+                    help="Populate the store and stop -- no questions, no reader, no judge, "
+                         "no results file. The benchmark Redis runs with appendonly no, so "
+                         "the store dies with the process; with the extraction cache warm "
+                         "this rebuilds it for almost no tokens, which is what makes "
+                         "benchmarks.sweep usable again after a restart")
     ap.add_argument("--no-extraction-cache", action="store_true",
                     help="Call the LLM for every turn instead of reusing cached Stage 3 "
                          "results. The cache is ON by default for benchmark runs because "
@@ -372,6 +378,8 @@ def main() -> int:
         extra.append("--save-context")
     if args.reuse_store:
         extra.append("--reuse-store")
+    if args.ingest_only:
+        extra.append("--ingest-only")
     if args.max_turns:
         extra += ["--max-turns", str(args.max_turns)]
 

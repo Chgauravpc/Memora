@@ -229,6 +229,7 @@ def run_conversation(
     save_context: bool = False,
     reuse_store: bool = False,
     max_turns: Optional[int] = None,
+    ingest_only: bool = False,
 ) -> Dict[str, Any]:
     from src import MemorySystem
 
@@ -318,7 +319,64 @@ def run_conversation(
     except Exception:  # noqa: BLE001
         total_memories = -1
 
+    # Built before QA so --ingest-only can report it without a grading pass.
+    ingest_block: Dict[str, Any] = {
+        # Turns actually processed, not the conversation length: --max-turns and
+        # --reuse-store both make these differ, and reporting the full length would
+        # understate sec/turn and misstate the escalation denominator.
+        "turns": len(turns),
+        "turns_available": len(conv.turns),
+        "reused_store": bool(reuse_store and existing > 0),
+        "sessions": conv.num_sessions,
+        "seconds": round(ingest_seconds, 1),
+        "seconds_per_turn": round(ingest_seconds / max(len(conv.turns), 1), 3),
+        "turn_errors": turn_errors,
+        "extracted_total": extracted_total,
+        "stage3_calls": ingest_stage3_calls,
+        # Denominator is turns actually processed, not the conversation length --
+        # --max-turns and --reuse-store make those differ and would understate it.
+        "stage3_rate": round(ingest_stage3_calls / max(len(turns), 1), 4),
+        "stage3_failures": counter.failures,
+        "stage3_empty": counter.empty,
+        "stage3_empty_rate": round(counter.empty / max(ingest_stage3_calls, 1), 4),
+        # Breaks the empty rate into clean_empty / parse_error / invalid_schema /
+        # api_error. Anything other than clean_empty is lost recall with a fixable
+        # cause, not a turn that held nothing.
+        "stage3_empty_reasons": _empty_reasons(counter),
+        "stage3_instrumented": instrumented,
+        "memories_in_store": total_memories,
+        # Hit rate says how much of this store was replayed rather than re-extracted.
+        # A run at 100% hits is bit-identical to the run that populated the cache,
+        # which is exactly what makes a retrieval A/B readable.
+        "extraction_cache": _cache_stats(),
+    }
+
     # ---------------------------------------------------------------- QA
+    #
+    # Rebuild-only mode. The benchmark's Redis runs with `appendonly no` and `save ""`
+    # (redis.benchmark.conf), so the store lives in RAM and dies with the process -- a
+    # logout or a reboot loses it. Re-ingesting is nearly free now that Stage 3 replays
+    # from the extraction cache, but grading is NOT: reader plus judge is the entire token
+    # bill. Without this flag the only way back to a populated store is to pay for a graded
+    # run you did not want, which under a one-run-per-day budget means losing the day.
+    #
+    # Deliberately writes no results file. An ingest-only run has no scores in it, and
+    # writing one would both clobber a real result and make the runner's resume logic skip
+    # the conversation as though it had been graded.
+    if ingest_only:
+        print(f"[{conv.sample_id}] ingest-only: {total_memories} memories in store, "
+              f"stage3 {ingest_stage3_calls} calls "
+              f"(cache {_cache_stats().get('hit_rate', 0):.0%} hits). "
+              f"No questions asked, no results file written.", flush=True)
+        return {
+            "sample_id": conv.sample_id,
+            "health": health,
+            "config": {**_architecture_snapshot(), "ingest_only": True},
+            "ingest": ingest_block,
+            "qa": {"count": 0, "seconds": 0.0, "reader_judge_usage": {}},
+            "records": [],
+        }
+
     client = LLMClient()
     questions: List[Question] = [q for q in conv.questions if q.gold is not None]
     if not include_adversarial:
@@ -392,36 +450,7 @@ def run_conversation(
             # not reportable.
             **_architecture_snapshot(),
         },
-        "ingest": {
-            # Turns actually processed, not the conversation length: --max-turns and
-            # --reuse-store both make these differ, and reporting the full length would
-            # understate sec/turn and misstate the escalation denominator.
-            "turns": len(turns),
-            "turns_available": len(conv.turns),
-            "reused_store": bool(reuse_store and existing > 0),
-            "sessions": conv.num_sessions,
-            "seconds": round(ingest_seconds, 1),
-            "seconds_per_turn": round(ingest_seconds / max(len(conv.turns), 1), 3),
-            "turn_errors": turn_errors,
-            "extracted_total": extracted_total,
-            "stage3_calls": ingest_stage3_calls,
-            # Denominator is turns actually processed, not the conversation length --
-            # --max-turns and --reuse-store make those differ and would understate it.
-            "stage3_rate": round(ingest_stage3_calls / max(len(turns), 1), 4),
-            "stage3_failures": counter.failures,
-            "stage3_empty": counter.empty,
-            "stage3_empty_rate": round(counter.empty / max(ingest_stage3_calls, 1), 4),
-            # Breaks the empty rate into clean_empty / parse_error / invalid_schema /
-            # api_error. Anything other than clean_empty is lost recall with a fixable
-            # cause, not a turn that held nothing.
-            "stage3_empty_reasons": _empty_reasons(counter),
-            "stage3_instrumented": instrumented,
-            "memories_in_store": total_memories,
-            # Hit rate says how much of this store was replayed rather than re-extracted.
-            # A run at 100% hits is bit-identical to the run that populated the cache,
-            # which is exactly what makes a retrieval A/B readable.
-            "extraction_cache": _cache_stats(),
-        },
+        "ingest": ingest_block,
         "qa": {
             "count": len(records),
             "seconds": round(qa_seconds, 1),
@@ -453,6 +482,11 @@ def main() -> int:
                     help="Skip ingest if this worker's store already holds memories. "
                          "For iterating on the reader/diagnosis without paying for "
                          "re-extraction. Do NOT use after changing extraction.")
+    ap.add_argument("--ingest-only", action="store_true",
+                    help="Populate the store and stop. No questions, no reader, no judge, "
+                         "no results file. The benchmark Redis does not persist, so this "
+                         "is how you get a usable store back without paying for a graded "
+                         "run you did not want")
     ap.add_argument("--max-turns", type=int, default=None,
                     help="Ingest only the first N turns (faster smoke tests; note this "
                          "makes later questions unanswerable, so scores drop)")
@@ -480,6 +514,7 @@ def main() -> int:
         save_context=args.save_context,
         reuse_store=args.reuse_store,
         max_turns=args.max_turns,
+        ingest_only=args.ingest_only,
     )
     ing = payload["ingest"]
     print(f"[{args.sample_id}] {ing['turns']} turns in {ing['seconds']}s "
