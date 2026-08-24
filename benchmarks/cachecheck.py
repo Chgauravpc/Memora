@@ -40,10 +40,24 @@ from __future__ import annotations
 from .paths import redirect_caches_into_repo  # noqa: E402
 redirect_caches_into_repo()
 
+import os  # noqa: E402
+
+# Probe the cache the way a benchmark run would see it.
+#
+# EXTRACTION_CACHE_ENABLED defaults to False so that importing Memora as a library changes
+# no behaviour; benchmarks/runner.py turns it on for its workers. Without the same default
+# here, this tool answers a question nobody asked: with the cache disabled `cache.get` is
+# never called, every escalation falls through to the API, and the report says 0% coverage
+# no matter how warm the cache actually is -- indistinguishable from keys that genuinely do
+# not match, which is the one thing this exists to tell apart.
+#
+# Set before any `src` import, because src/config.py freezes environment into module
+# constants at import time. setdefault, not assignment, so an explicit
+# EXTRACTION_CACHE_ENABLED=false on the command line still wins.
+os.environ.setdefault("EXTRACTION_CACHE_ENABLED", "true")
+
 import argparse  # noqa: E402
 import logging  # noqa: E402
-import os  # noqa: E402
-import sys  # noqa: E402
 from typing import Optional  # noqa: E402
 
 from .dataset import load_conversations  # noqa: E402
@@ -86,7 +100,8 @@ def main() -> int:
 
     cache = get_extraction_cache()
     print(f"conversation      : {conv.sample_id}")
-    print(f"cache enabled     : {bool(cache.enabled)}")
+    print(f"cache enabled     : {bool(cache.enabled)}"
+          + ("" if cache.enabled else "   <-- probe is meaningless; see below"))
     print(f"cache directory   : {cache.directory}")
     try:
         on_disk = sum(1 for _ in cache.directory.glob("*/*.json"))
