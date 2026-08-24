@@ -367,6 +367,14 @@ def main() -> int:
     if args.top_k is not None:
         os.environ["MAX_MEMORIES_TO_RETRIEVE"] = str(args.top_k)
 
+    # Echo the resolved state before spending anything. A run whose cache was silently off
+    # is indistinguishable from one whose cache missed until the store comes back short --
+    # and by then the previous store is gone, because the benchmark Redis does not persist.
+    print(f"extraction cache : {os.environ.get('EXTRACTION_CACHE_ENABLED', 'false')}"
+          f"   rerank: {os.environ.get('RERANK_ENABLED', 'false')}"
+          f"   top-k: {os.environ.get('MAX_MEMORIES_TO_RETRIEVE', 'default (50)')}")
+    print("   (verify coverage first with: python -m benchmarks.cachecheck)")
+
     extra: List[str] = []
     if args.no_adversarial:
         extra.append("--no-adversarial")
