@@ -133,6 +133,13 @@ def _grid_evidence() -> List[Dict[str, str]]:
     ]
 
 
+def _grid_subject() -> List[Dict[str, str]]:
+    # Only the RANKING half is visible here: rendering changes which words sit where, not
+    # which memories are retrieved, so coverage and MRR cannot see it. The rendering half
+    # needs a graded run.
+    return [{}, {"SUBJECT_AWARE_RANKING": "true"}]
+
+
 def _grid_default() -> List[Dict[str, str]]:
     """A curated single-variable pass -- the one to run first."""
     out: List[Dict[str, str]] = [{}]
@@ -174,6 +181,7 @@ GRIDS = {
     "recency": _grid_recency,
     "always_on": _grid_always_on,
     "evidence": _grid_evidence,
+    "subject": _grid_subject,
     "full": _grid_full,
 }
 
@@ -189,6 +197,8 @@ def label(cfg: Dict[str, str]) -> str:
         "RANK_W_RECENCY": "w_rec",
         "RECENCY_RETRIEVAL_LIMIT": "rec_lim",
         "ALWAYS_ON_SEMANTIC_FLOOR": "floor",
+        "SUBJECT_AWARE_RANKING": "subj_rank",
+        "SUBJECT_AWARE_CONTEXT": "subj_ctx",
         "CONTEXT_EVIDENCE_TOP_N": "ev_n",
         "CONTEXT_EVIDENCE_MAX_CHARS": "ev_c",
     }

@@ -506,6 +506,33 @@ FREQUENCY_DECAY_RATE = 0.05         # How fast frequency score decays
 FREQUENCY_MAX_ACCESSES = 20         # Normalize access count against this
 ACCESS_RECENCY_WEIGHT = 0.6         # Weight for recent accesses vs total count
 
+# ---------------------------------------------------------------- subject vs speaker
+#
+# `speaker` is who UTTERED a turn. The comment on MEMORY_FIELDS calls it "who the memory is
+# ABOUT (the utterer)", which quietly assumes those are the same person. They are, for one
+# user narrating their own life -- the setting Memora was built for. In a conversation
+# between several people, who mostly talk about each other, they are frequently not.
+#
+# Measured on one LoCoMo conversation: 58 of 335 distinct rendered memories (17%) carry a
+# value about somebody other than the speaker, and the context renders every one of them as
+#
+#     [22 October, 2023] Melanie - adoption intent: Caroline plans to adopt
+#
+# which asserts, in the position a reader trusts most, that this is Melanie's plan. Asked
+# "what are Melanie's plans for adoption", the reader answers with Caroline's. That is not a
+# reader failure; the label misinformed it.
+#
+# The subject is derived deterministically from the leading name of the value, NOT by asking
+# the model for it. Asking would change the extraction prompt, which by design changes every
+# cache key -- turning a free re-ingest into a full re-extraction. A rendering-layer fix
+# costs nothing to try and can be reverted by a flag.
+#
+# Both default off so the existing baseline stays exactly comparable.
+SUBJECT_AWARE_CONTEXT = _flag("SUBJECT_AWARE_CONTEXT", False)
+# Apply the query's speaker match to the subject rather than the utterer. "What are
+# Melanie's plans" should prefer memories ABOUT Melanie, not memories she happened to say.
+SUBJECT_AWARE_RANKING = _flag("SUBJECT_AWARE_RANKING", False)
+
 # ---------------------------------------------------------------- cross-encoder reranking
 #
 # The 5-signal sum scores a memory against the query through ONE number -- a cosine, or a

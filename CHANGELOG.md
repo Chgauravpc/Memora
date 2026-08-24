@@ -64,6 +64,15 @@ the score trajectory. All numbers so far are single-conversation smoke tests; a 
   reranking and BM25 changes). It cannot see a reader miss, so it produces a shortlist, never
   a result. Wraps `increment_access_count` to a no-op for the duration so sweeping does not
   mutate the store it is measuring.
+- **Subject-aware context and ranking** (`SUBJECT_AWARE_CONTEXT`, `SUBJECT_AWARE_RANKING`,
+  both off by default). `speaker` records who uttered a turn, and the context renders it as
+  though it were who the fact is about: 51 of 335 memories in one conversation (15%) read
+  `Melanie - adoption intent: Caroline plans to adopt`. Asked for Melanie's plans, the
+  reader returns Caroline's — the label misinformed it. `subject_of()` derives the subject
+  from a leading participant name, gated on the speakers actually present so a capitalised
+  verb cannot invent one; validated against a real store, the ungated version relabelled 71
+  of 335 with subjects called "Having" and "Felt". Derived at render time rather than asked
+  of the model, because a prompt change invalidates every extraction-cache key.
 - **`--top-k`, `--rerank`, `--no-extraction-cache`** on `run_locomo.py`, and
   `config.extraction_cache` / `config.rerank*` / `ingest.extraction_cache` in every results
   file, so a cached or reranked run can never be mistaken for a baseline one.

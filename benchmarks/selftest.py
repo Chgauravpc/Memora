@@ -661,6 +661,87 @@ def test_topk_is_sweepable() -> None:
           f"budget allows {budget // per_mem} memories vs top-K {default_k}")
 
 
+def test_subject_vs_speaker() -> None:
+    """A memory is not always about the person who uttered it."""
+    print("\nsubject vs speaker")
+    r = _reload("conversation", SUBJECT_AWARE_CONTEXT="true")
+    from src.retriever import participant_names, subject_of
+
+    mems = [{"speaker": "Melanie", "value": "x"}, {"speaker": "Caroline Carter", "value": "y"}]
+    known = participant_names(mems)
+    check("participants come from the speakers present",
+          {"melanie", "caroline carter", "caroline"} <= known,
+          f"got {known}; the full name and the first name must both match")
+
+    said_by_melanie_about_caroline = {
+        "speaker": "Melanie",
+        "value": "Caroline plans to give a home to needy children through adoption"}
+    check("a value leading with another participant relabels the subject",
+          subject_of(said_by_melanie_about_caroline, known) == "Caroline",
+          "this is the 15% of memories the context currently misattributes")
+    check("possessives count too",
+          subject_of({"speaker": "Caroline", "value": "Melanie's wedding day was lovely"},
+                     known) == "Melanie")
+
+    # The regression that validation against a real store caught: a bare capitalisation
+    # test invented subjects called "Having" and "Felt".
+    for verb_value in ("Having people who understand has made a difference",
+                       "Felt totally accepted at the conference"):
+        check(f"a capitalised verb is not a subject ({verb_value.split()[0]})",
+              subject_of({"speaker": "Caroline", "value": verb_value}, known) == "Caroline",
+              "gating on known participants is what prevents this")
+
+    check("a name later in the value is an object, not the subject",
+          subject_of({"speaker": "Caroline",
+                      "value": "Caroline offered to help Melanie with the adoption"},
+                     known) == "Caroline")
+    check("a value naming nobody stays with its speaker",
+          subject_of({"speaker": "Melanie", "value": "prefers espresso"}, known) == "Melanie",
+          "otherwise the only attribution available would be lost")
+    check("without a participant list nothing is relabelled",
+          subject_of(said_by_melanie_about_caroline, None) == "Melanie",
+          "the safe default is exactly today's behaviour")
+
+    # Rendering: the false assertion must be gone, and provenance kept.
+    #
+    # Both speakers are present, as they are in any real retrieved context from a two-party
+    # conversation. That matters: participants are derived from the speakers in the set, so
+    # a context containing only Melanie's memories has no evidence that "Caroline" names a
+    # person at all, and correctly declines to relabel.
+    CROSS = [
+        {"memory_id": "m1", "type": "fact", "key": "adoption intent",
+         "value": "Caroline plans to give a home to needy children",
+         "speaker": "Melanie", "event_date": "22 October, 2023",
+         "event_ts": 1.0, "turn_number": 5, "confidence": 0.9, "retrieval_score": 0.9,
+         "source_text": ""},
+        {"memory_id": "m2", "type": "preference", "key": "coffee",
+         "value": "prefers espresso", "speaker": "Caroline", "event_date": "",
+         "event_ts": 0.0, "turn_number": 6, "confidence": 0.8, "retrieval_score": 0.4,
+         "source_text": ""},
+    ]
+    retr = r.MemoryRetriever.__new__(r.MemoryRetriever)
+    out = retr._format_chronological(CROSS)
+    check("the cross-attributed line no longer opens with the wrong person",
+          "Melanie - adoption intent" not in out,
+          f"got: {out.strip()[:120]}")
+    check("provenance is kept as attribution, not ownership",
+          "[said by Melanie]" in out, f"got: {out.strip()[:120]}")
+    check("the subject still reaches the reader via the value",
+          "Caroline plans" in out)
+    solo = retr._format_chronological([CROSS[0]])
+    check("a lone speaker's context does not relabel on an unverified name",
+          "Melanie - adoption intent" in solo,
+          "with no evidence Caroline is a participant, falling back is the safe choice")
+
+    # Baseline must be untouched with the flag off, or the 43.5% reading stops comparing.
+    r2 = _reload("conversation", SUBJECT_AWARE_CONTEXT=None)
+    retr2 = r2.MemoryRetriever.__new__(r2.MemoryRetriever)
+    out2 = retr2._format_chronological(CROSS)
+    check("with the flag off the rendering is unchanged",
+          "Melanie - adoption intent" in out2 and "said by" not in out2,
+          f"got: {out2.strip()[:120]}")
+
+
 def test_sweep_grids() -> None:
     """The offline sweep's grids must be well-formed and single-variable."""
     print("\noffline retrieval sweep")
@@ -698,6 +779,7 @@ def test_sweep_grids() -> None:
         "RANK_W_SEMANTIC", "RANK_W_TYPE", "RANK_W_RECENCY", "RANK_W_FREQUENCY",
         "RANK_W_CONFIDENCE", "RECENCY_RETRIEVAL_LIMIT", "ALWAYS_ON_SEMANTIC_FLOOR",
         "CONTEXT_EVIDENCE_TOP_N", "CONTEXT_EVIDENCE_MAX_CHARS",
+        "SUBJECT_AWARE_RANKING", "SUBJECT_AWARE_CONTEXT",
     }
     used = {k for build in GRIDS.values() for cfg in build() for k in cfg}
     check("every swept key is a real config knob", used <= known,
@@ -930,7 +1012,7 @@ def main() -> int:
                test_ranking_profiles, test_embedding_text, test_speaker_prompt,
                test_entity_index, test_extraction_quality_prompt,
                test_extraction_cache, test_reranker, test_topk_is_sweepable,
-               test_sweep_grids,
+               test_subject_vs_speaker, test_sweep_grids,
                test_temporal_enrichment, test_context_noise, test_reader_prompt,
                test_results_roundtrip, test_dataset_dates, test_stratified_sampling):
         try:
