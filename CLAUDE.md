@@ -34,7 +34,7 @@ python test_customer_conversation.py     # 60-turn customer-service scenario
 python test_comprehensive_1000_turn.py   # 1000 turns, all phases (slow, burns API quota)
 ```
 
-**`python -m benchmarks.selftest` is the fast check and the closest thing to a unit suite** — 104 logic assertions covering config invariants, prompt contents, ranking, dedup keys, the entity index, and the results reader/writer contract. It needs no Redis, no Qdrant, and no network, so it runs anywhere in seconds. Run it before and after any change to `src/` or `benchmarks/`. It is the only test that catches a config or prompt regression before you spend an hour of compute on a benchmark run.
+**`python -m benchmarks.selftest` is the fast check and the closest thing to a unit suite** — 189 logic assertions covering config invariants, prompt contents, ranking, dedup keys, the entity index, extraction-cache keying and failure handling, cross-encoder reranking, and the results reader/writer contract. It needs no Redis, no Qdrant, and no network, so it runs anywhere in seconds. Run it before and after any change to `src/` or `benchmarks/`. It is the only test that catches a config or prompt regression before you spend an hour of compute on a benchmark run.
 
 There is **no pytest suite** — `pytest` is listed in `requirements_evaluation.txt` but no test functions are collected, and `make test` is a stub.
 
@@ -68,6 +68,21 @@ Runs are **resumable**: conversations already in `results/locomo/raw/` are skipp
 **Small samples lie.** Successive `n=25` single-conversation readings have swung 64% → 32% → 48% on changes that were partly confounded. Anything below a full 10-conversation run is a smoke test, not a result.
 
 **Confounding to watch:** `STAGE_3_TEMPERATURE` defaults to `0.0` precisely so that re-ingesting builds the *same* store twice. Setting it non-zero makes every A/B compare two different memory stores, and the retrieval delta becomes unreadable.
+
+**Temperature 0 is not enough on a reasoning model.** `gpt-oss-120b` spends hidden chain-of-thought before its visible reply and that is not bit-exact run to run: the same conversation re-ingested twice produced 769 memories and then 431, with identical turn count, escalation rate and empty rate. The **Stage 3 extraction cache** (`src/extraction_cache.py`) fixes this by memoising extraction on disk, keyed by a hash of the fully-assembled prompt plus provider/model/temperature/max-tokens/turn. It is **on by default for benchmark runs** (`--no-extraction-cache` to disable) and off for the library.
+
+Two consequences worth internalising:
+
+- Editing the prompt, the VALUE QUALITY block, the model or the temperature changes the key automatically, so a stale cache cannot serve results from a pipeline that no longer exists. Changing the *parse/validate output shape* is the one thing the hash cannot see — bump `EXTRACTION_CACHE_VERSION`.
+- A re-ingest after the first one is free and bit-identical, so **prefer a full re-ingest over `--reuse-store`**. Rebuilding exactly is now cheaper than reasoning about whether reuse is valid.
+
+Failures are never cached: `parse_error`, `invalid_schema` and `api_error` are recorded as reasons and skipped, so a transient failure cannot be frozen and replayed as "nothing worth remembering". The breakdown appears as `ingest.stage3_empty_reasons` — check it before believing a low extraction count.
+
+**Retrieval ablations that are wired and unswept:** `--top-k` (the cap binds on *every* question at its default 50) and `--rerank` (cross-encoder over the top 50 candidates, applied before the top-K cut so it can promote a memory ranking placed outside it). Both are retrieval-only, so `--reuse-store` is valid; both are off by default and recorded in each results file's `config` block.
+
+**`speaker` is the utterer, not the subject.** `config.py` calls it "who the memory is ABOUT (the utterer)", conflating two things that coincide only for a single first-person user. In a conversation where people discuss each other, 15% of memories (measured, one LoCoMo conversation) render as `Melanie - adoption intent: Caroline plans to adopt` — asserting the fact belongs to the speaker. `subject_of()` in `retriever.py` derives the real subject from a leading participant name, gated on the set of people who actually speak, so a capitalised verb ("Having", "Felt") cannot invent a subject. `SUBJECT_AWARE_CONTEXT` moves attribution to a trailing `[said by X]`; `SUBJECT_AWARE_RANKING` applies the query's speaker match to the subject. Both default off. Derived at render time on purpose — asking the model for a `subject` field would change the extraction prompt and therefore every cache key, turning a free re-ingest into a full re-extraction.
+
+**Do not spend a graded run on a retrieval question.** `python -m benchmarks.sweep --grid default` compares retrieval configurations against the existing store with **no reader, no judge, no ingest and no API key** — the daily budget allows roughly one graded run, so shortlist for free and grade only the winners. Read `MRR` (position of the first gold-bearing memory) for anything that changes ordering; `coverage` rises with context size on its own and can only tell you the smallest top-K that has not yet started losing answers. Neither sees a reader miss, so the sweep is a shortlist, never a result.
 
 ## Architecture
 
@@ -109,7 +124,7 @@ Retrieval (`retriever.py:_retrieve_with_semantic_search`) is a **multi-branch hy
 - recency branch that deliberately bypasses the similarity floor (assigned `RECENCY_FALLBACK_SEMANTIC_SCORE`) — this is what gets long-distance recall
 - always-on `constraint`/`instruction` types
 
-then a 5-signal weighted sum, superseded-filter, top-K, token-budget trim.
+then a 5-signal weighted sum, superseded-filter, optional cross-encoder rerank (`src/reranker.py`, off by default — runs *before* the cut so it can promote a memory the sum ranked outside top-K), top-K, token-budget trim. Note the token-budget trim cannot fire at the shipped defaults: `MEMORY_TOKEN_BUDGET // TOKENS_PER_MEMORY_ESTIMATE` is 60, above `MAX_MEMORIES_TO_RETRIEVE` of 50, so top-K alone bounds context size.
 
 Consolidation runs inline, not in a thread: `process_turn` calls `ConsolidationWorker.needs_consolidation` and blocks on `run_consolidation` every `CONSOLIDATION_INTERVAL_TURNS`. Decay, merge, and promote are each independently gated by their own flag (`MEMORY_DECAY_ENABLED` is currently **False**).
 

@@ -336,7 +336,44 @@ def main() -> int:
                          "Fast iteration on the reader; invalid after extraction changes")
     ap.add_argument("--max-turns", type=int, default=None,
                     help="Ingest only the first N turns per conversation")
+    ap.add_argument("--ingest-only", action="store_true",
+                    help="Populate the store and stop -- no questions, no reader, no judge, "
+                         "no results file. The benchmark Redis runs with appendonly no, so "
+                         "the store dies with the process; with the extraction cache warm "
+                         "this rebuilds it for almost no tokens, which is what makes "
+                         "benchmarks.sweep usable again after a restart")
+    ap.add_argument("--no-extraction-cache", action="store_true",
+                    help="Call the LLM for every turn instead of reusing cached Stage 3 "
+                         "results. The cache is ON by default for benchmark runs because "
+                         "reasoning models are not reproducible at temperature 0 -- the "
+                         "same conversation re-ingested twice built stores of 769 and 431 "
+                         "memories, which swamps every effect being measured. Disable this "
+                         "only to measure that variance deliberately")
+    ap.add_argument("--rerank", action="store_true",
+                    help="Rerank retrieved memories with a cross-encoder before the top-K "
+                         "cut. Changes the system under test; recorded in every result file")
+    ap.add_argument("--top-k", type=int, default=None,
+                    help="Override MAX_MEMORIES_TO_RETRIEVE. The cap binds on every "
+                         "question at its default of 50, so this is the sweep that matters")
     args = ap.parse_args()
+
+    # Set before workers are spawned: src/config.py freezes env into module constants at
+    # import time, so a subprocess inherits whatever is set here and nothing later can
+    # change it. Same reason workers are processes rather than threads.
+    if not args.no_extraction_cache:
+        os.environ.setdefault("EXTRACTION_CACHE_ENABLED", "true")
+    if args.rerank:
+        os.environ["RERANK_ENABLED"] = "true"
+    if args.top_k is not None:
+        os.environ["MAX_MEMORIES_TO_RETRIEVE"] = str(args.top_k)
+
+    # Echo the resolved state before spending anything. A run whose cache was silently off
+    # is indistinguishable from one whose cache missed until the store comes back short --
+    # and by then the previous store is gone, because the benchmark Redis does not persist.
+    print(f"extraction cache : {os.environ.get('EXTRACTION_CACHE_ENABLED', 'false')}"
+          f"   rerank: {os.environ.get('RERANK_ENABLED', 'false')}"
+          f"   top-k: {os.environ.get('MAX_MEMORIES_TO_RETRIEVE', 'default (50)')}")
+    print("   (verify coverage first with: python -m benchmarks.cachecheck)")
 
     extra: List[str] = []
     if args.no_adversarial:
@@ -349,6 +386,8 @@ def main() -> int:
         extra.append("--save-context")
     if args.reuse_store:
         extra.append("--reuse-store")
+    if args.ingest_only:
+        extra.append("--ingest-only")
     if args.max_turns:
         extra += ["--max-turns", str(args.max_turns)]
 

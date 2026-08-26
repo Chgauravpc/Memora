@@ -38,9 +38,16 @@ from .config import (
     MULTIHOP_EXTRA_LIMIT,
     MULTIHOP_SEED_MEMORIES,
     QUERY_AWARE_RETRIEVAL,
+    RERANK_CANDIDATES,
+    RERANK_ENABLED,
+    RERANK_MODEL,
+    RERANK_WEIGHT,
     RRF_K,
     SPEAKER_MATCH_BOOST,
+    SUBJECT_AWARE_CONTEXT,
+    SUBJECT_AWARE_RANKING,
     TEMPORAL_INTENT_BOOST,
+    TOKENS_PER_MEMORY_ESTIMATE,
     SEMANTIC_SEARCH_ENABLED,
     SEMANTIC_SEARCH_LIMIT,
     MIN_SEMANTIC_SCORE,
@@ -59,6 +66,7 @@ from .config import (
     RECENCY_FALLBACK_SEMANTIC_SCORE,
 )
 from .redis_store import RedisStore
+from .reranker import rerank
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +145,59 @@ def query_entities(query: str) -> set:
 # part that matters. Dropped from the rendered context only; the stored field is untouched.
 _TIME_PREFIX_RE = re.compile(
     r"^\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+on\s+", re.IGNORECASE)
+
+
+# A value that opens with a capitalised name is stating a fact about that person:
+# "Caroline plans to give a home to needy children", "Melanie's wedding day".
+# Anchored to the START of the value on purpose. Names appearing later are usually objects
+# rather than subjects -- "Caroline offered to help Melanie" is about Caroline -- and an
+# unanchored search would also pick up place names ("Ravensbourne art museum"). A miss here
+# is harmless (we fall back to the speaker, i.e. today's behaviour); a false positive
+# relabels a memory, so precision matters far more than recall.
+_SUBJECT_RE = re.compile(r"^\s*([A-Z][a-z]{2,})(?:'s|’s)?\b")
+
+
+def participant_names(memories: List[Dict]) -> set:
+    """Lowercased names of everyone who speaks in this set of memories, plus first names.
+
+    The conversation's own participants, taken from the `speaker` field the caller already
+    supplies. Nothing here knows about any dataset -- it is simply "the people talking".
+    """
+    names = set()
+    for mem in memories:
+        speaker = str(mem.get('speaker') or '').strip()
+        if not speaker:
+            continue
+        names.add(speaker.lower())
+        first = speaker.split()[0]
+        if len(first) > 2:
+            names.add(first.lower())
+    return names
+
+
+def subject_of(memory: Dict, known_names: Optional[set] = None) -> str:
+    """Who a memory is ABOUT, which is not always who said it.
+
+    A leading capitalised token is only accepted as the subject when it names a KNOWN
+    PARTICIPANT. Without that check the rule mislabels sentence-initial verbs and gerunds:
+    validated against a real store, a bare capitalisation test relabelled 71 of 335
+    memories where only 58 were genuine, inventing subjects called "Having" and "Felt".
+    Falling back to the speaker costs nothing -- it is exactly today's behaviour -- while a
+    false positive actively misattributes a fact, which is the bug being fixed.
+
+    A memory whose value names nobody ("prefers espresso") stays attributed to its speaker;
+    that is the whole reason the speaker prefix exists.
+    """
+    speaker = str(memory.get('speaker') or '').strip()
+    if not known_names:
+        return speaker
+
+    match = _SUBJECT_RE.match(str(memory.get('value') or ''))
+    if match:
+        name = match.group(1)
+        if name.lower() in known_names:
+            return name
+    return speaker
 
 
 def _clean_date(raw: str) -> str:
@@ -529,6 +590,10 @@ class MemoryRetriever:
         temporal_intent = QUERY_AWARE_RETRIEVAL and has_temporal_intent(current_message)
         q_entities = query_entities(current_message) if QUERY_AWARE_RETRIEVAL else set()
         q_dates = query_dates(current_message) if QUERY_AWARE_RETRIEVAL else set()
+        # Participants of this conversation, from the candidate pool. Needed to tell a
+        # leading name apart from a capitalised verb when deriving a memory's subject.
+        known_names = (participant_names(all_memories.values())
+                       if SUBJECT_AWARE_RANKING else set())
 
         ranked_memories = []
         
@@ -601,8 +666,13 @@ class MemoryRetriever:
                 if q_dates and date_overlap(q_dates, mem_date):
                     final_score += DATE_MATCH_BOOST
                 if q_entities:
-                    speaker = str(memory.get('speaker') or '').strip().lower()
-                    if speaker and speaker in q_entities:
+                    # Who the question is about, not who happened to say it. A memory
+                    # Melanie uttered about Caroline should answer to "Caroline", and
+                    # currently answers to "Melanie".
+                    who_matters = (subject_of(memory, known_names) if SUBJECT_AWARE_RANKING
+                                   else str(memory.get('speaker') or ''))
+                    who_matters = who_matters.strip().lower()
+                    if who_matters and who_matters in q_entities:
                         final_score += SPEAKER_MATCH_BOOST
 
             memory['retrieval_score'] = final_score
@@ -617,14 +687,26 @@ class MemoryRetriever:
         
         # Filter out superseded memories (Phase 3)
         ranked_memories = self._filter_superseded(ranked_memories)
-        
+
+        # Cross-encoder rerank, before the top-K cut so it can promote a memory that the
+        # weighted sum ranked outside the cut. Running it after would only reorder what was
+        # already going to be sent, which is the limitation of the MOST RELEVANT section.
+        if RERANK_ENABLED and ranked_memories:
+            ranked_memories = rerank(
+                query=current_message,
+                memories=ranked_memories,
+                model_name=RERANK_MODEL,
+                candidates=RERANK_CANDIDATES,
+                weight=RERANK_WEIGHT,
+            )
+
         # Take top K
         top_memories = ranked_memories[:MAX_MEMORIES_TO_RETRIEVE]
-        
+
         # Budget check
-        estimated_tokens = len(top_memories) * 50
+        estimated_tokens = len(top_memories) * TOKENS_PER_MEMORY_ESTIMATE
         if estimated_tokens > MEMORY_TOKEN_BUDGET:
-            max_count = MEMORY_TOKEN_BUDGET // 50
+            max_count = MEMORY_TOKEN_BUDGET // TOKENS_PER_MEMORY_ESTIMATE
             top_memories = top_memories[:max_count]
             logger.warning(f"Trimmed memories to {max_count} to fit token budget")
         
@@ -703,13 +785,12 @@ class MemoryRetriever:
         # Take top K
         top_memories = all_memories[:MAX_MEMORIES_TO_RETRIEVE]
         
-        # Budget check (estimate ~50 tokens per memory on average)
-        # This is a rough estimate; Phase 2+ will have more precise token counting
-        estimated_tokens = len(top_memories) * 50
-        
+        # Budget check (flat per-memory estimate, not a tokenizer count)
+        estimated_tokens = len(top_memories) * TOKENS_PER_MEMORY_ESTIMATE
+
         if estimated_tokens > MEMORY_TOKEN_BUDGET:
             # Trim to fit budget
-            max_count = MEMORY_TOKEN_BUDGET // 50
+            max_count = MEMORY_TOKEN_BUDGET // TOKENS_PER_MEMORY_ESTIMATE
             top_memories = top_memories[:max_count]
             logger.warning(f"Trimmed memories to {max_count} to fit token budget")
         
@@ -827,6 +908,9 @@ class MemoryRetriever:
             if CONTEXT_EVIDENCE_TOP_N > 0 else []
         )
         top_ids = {m.get('memory_id') for m in top_ranked}
+        # Computed once over the whole retrieved set rather than per line: the participant
+        # list is a property of the conversation, not of one memory.
+        known = participant_names(memories) if SUBJECT_AWARE_CONTEXT else set()
 
         def render(mem: Dict) -> str:
             when = _clean_date(mem.get('event_date') or _source_date(mem) or '')
@@ -840,10 +924,20 @@ class MemoryRetriever:
             head = f"[{when}] " if when else ""
             # ASCII separator on purpose: this string lands in prompts, JSON results and
             # log files that get read on consoles with a non-UTF-8 codepage.
-            if CONTEXT_INCLUDE_SPEAKER and who:
+            tail = ""
+            if SUBJECT_AWARE_CONTEXT and who:
+                subject = subject_of(mem, known)
+                if subject and subject.lower() != who.lower():
+                    # The value already names its subject, so prefixing the speaker here
+                    # would assert the fact belongs to the wrong person. Attribution moves
+                    # to the end, where it reads as provenance instead of ownership.
+                    tail = f"  [said by {who}]"
+                elif CONTEXT_INCLUDE_SPEAKER:
+                    head += f"{who} - "
+            elif CONTEXT_INCLUDE_SPEAKER and who:
                 head += f"{who} - "
             body = f"{key}: {value}" if key and value else (value or key)
-            line = f"- {head}{body} ({mem_type})"
+            line = f"- {head}{body} ({mem_type}){tail}"
 
             if mem.get('memory_id') in top_ids:
                 src = str(mem.get('source_text') or '').strip()

@@ -17,7 +17,9 @@ process without a reload.
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import logging
 import os
 import sys
 from typing import Dict, List
@@ -35,6 +37,26 @@ def _reload(profile: str, **env):
     for mod in [m for m in sys.modules if m.startswith("src")]:
         del sys.modules[mod]
     return importlib.import_module("src.retriever")
+
+
+@contextlib.contextmanager
+def _quiet(*logger_names: str):
+    """Silence loggers around a check that deliberately triggers a failure.
+
+    Several checks here assert on behaviour that only happens when something goes wrong --
+    a model that never emits JSON, a reranker that cannot load. Those paths log at ERROR
+    and WARNING by design, which is correct in production and actively harmful in a test
+    suite: a passing run fills with red-looking tracebacks and stops being readable as a
+    green light. Scoped narrowly so a genuinely unexpected error still surfaces.
+    """
+    levels = [(logging.getLogger(n), logging.getLogger(n).level) for n in logger_names]
+    for lg, _ in levels:
+        lg.setLevel(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        for lg, original in levels:
+            lg.setLevel(original)
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
@@ -265,6 +287,9 @@ def test_speaker_prompt() -> None:
     ex.api_call_count = 0
     ex.total_response_time_ms = 0.0
     ex.key_rotation_count = 0
+    ex.model = "test-model"
+    ex.last_empty_reason = None
+    ex.empty_reasons = {}
 
     out = ex.extract("I went to the museum", 1,
                      speaker="Melanie", event_date="8 May, 2023")
@@ -375,6 +400,9 @@ def test_extraction_quality_prompt() -> None:
                  "key_rotation_count"):
         setattr(ex, attr, 0)
     ex.total_response_time_ms = 0.0
+    ex.model = "test-model"
+    ex.last_empty_reason = None
+    ex.empty_reasons = {}
 
     ex.extract("The charity race was great", 1, speaker="Melanie")
     p = captured.get("p", "")
@@ -403,14 +431,367 @@ def test_extraction_quality_prompt() -> None:
                  "key_rotation_count"):
         setattr(bad, attr, 0)
     bad.total_response_time_ms = 0.0
-    out = bad.extract("The charity race was great", 1, speaker="Melanie")
+    bad.model = "test-model"
+    bad.last_empty_reason = None
+    bad.empty_reasons = {}
+    # Expected to fail: silence the ERROR logging it emits by design.
+    with _quiet("src.llm_extractor"):
+        out = bad.extract("The charity race was great", 1, speaker="Melanie")
     check("unparseable output returns empty, not an exception", out == [])
     check("unparseable output retries at most once", bad_calls["n"] == 2,
           f"took {bad_calls['n']} LLM calls; unbounded recursion burns quota per frame")
+    # The reason matters as much as the count: an unparseable response is a FAILURE, and
+    # must never be cached as "this turn had nothing worth remembering".
+    check("unparseable output is attributed to parsing, not to an empty turn",
+          bad.last_empty_reason == "parse_error",
+          f"got {bad.last_empty_reason!r}; caching this reason would freeze the failure")
 
     from src.config import STAGE_3_MAX_TOKENS
     check("token cap leaves room for richer values", STAGE_3_MAX_TOKENS >= 1000,
           f"got {STAGE_3_MAX_TOKENS}; truncated JSON is swallowed as 'nothing found'")
+
+
+def test_extraction_cache() -> None:
+    """Stage 3 memoisation: the key must invalidate itself, and failures must not stick."""
+    print("\nextraction cache")
+    import tempfile
+
+    _reload("conversation")
+    from src.extraction_cache import ExtractionCache, build_key
+
+    def key(**over):
+        args = dict(prompt="PROMPT A", provider="groq", model="m1",
+                    temperature=0.0, max_tokens=1200, turn_number=1, version="1")
+        args.update(over)
+        return build_key(**args)
+
+    base = key()
+    check("identical inputs give the same key", base == key())
+    # The prompt carries message, context, speaker, event date, hint and the template
+    # itself, so this one check covers every input that shapes an extraction.
+    check("a changed prompt changes the key", base != key(prompt="PROMPT B"),
+          "an edited prompt must not be served from the old cache")
+    check("a changed model changes the key", base != key(model="m2"))
+    check("a changed temperature changes the key", base != key(temperature=0.7))
+    check("a changed token cap changes the key", base != key(max_tokens=500))
+    check("a changed turn changes the key", base != key(turn_number=2),
+          "turn_number determines memory_id and is not always in the prompt")
+    check("a version bump invalidates everything", base != key(version="2"),
+          "the only invalidation the prompt hash cannot derive on its own")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = ExtractionCache(tmp, enabled=True)
+        check("a cold lookup misses", cache.get(base) is None)
+        mems = [{"memory_id": "mem_1_0", "key": "charity race",
+                 "value": "ran a charity race raising awareness for mental health"}]
+        check("a clean result is written", cache.put(base, mems) is True)
+        got = cache.get(base)
+        check("the round trip preserves the memories", got == mems)
+        check("a hit hands back a copy, not the stored object", got is not mems,
+              "callers stamp speaker/user_id onto these dicts afterwards")
+        check("an empty list is a legitimate cached value", cache.put(key(prompt="X"), []) is True)
+        check("an empty cached value reads back as empty, not as a miss",
+              cache.get(key(prompt="X")) == [])
+        stats = cache.stats()
+        check("stats count hits, misses and writes",
+              stats["hits"] == 2 and stats["misses"] == 1 and stats["writes"] == 2,
+              f"got {stats}")
+        check("clear empties the cache", cache.clear() >= 2 and cache.get(base) is None)
+
+        disabled = ExtractionCache(tmp, enabled=False)
+        check("a disabled cache never reads", disabled.get(base) is None)
+        check("a disabled cache never writes", disabled.put(base, mems) is False)
+
+    # End to end: the same turn twice must cost one LLM call and return the same memories.
+    _reload("conversation", EXTRACTION_CACHE_ENABLED="true",
+            EXTRACTION_CACHE_DIR=tempfile.mkdtemp())
+    from src.extraction_cache import reset_extraction_cache
+    from src.llm_extractor import LLMExtractor
+    reset_extraction_cache()
+
+    calls = {"n": 0}
+
+    def _one_memory(prompt: str) -> str:
+        calls["n"] += 1
+        return ('[{"type":"event","key":"charity race",'
+                '"value":"ran a charity race","confidence":0.9}]')
+
+    ex = object.__new__(LLMExtractor)
+    ex._call_llm = _one_memory
+    ex.provider = "test"
+    ex.model = "test-model"
+    for attr in ("extraction_count", "escalation_count", "api_call_count",
+                 "key_rotation_count"):
+        setattr(ex, attr, 0)
+    ex.total_response_time_ms = 0.0
+    ex.last_empty_reason = None
+    ex.empty_reasons = {}
+
+    first = ex.extract("The charity race was great", 1, speaker="Melanie")
+    second = ex.extract("The charity race was great", 1, speaker="Melanie")
+    check("a repeated turn costs one LLM call, not two", calls["n"] == 1,
+          f"took {calls['n']}; the cache is what makes a re-ingest reproducible")
+    check("a repeated turn returns identical memories", first == second,
+          "this is the whole point: re-ingest must rebuild the same store")
+
+    # A model that never emits JSON must not poison the cache with its failure.
+    reset_extraction_cache()
+    bad_calls = {"n": 0}
+
+    def _never_json(prompt: str) -> str:
+        bad_calls["n"] += 1
+        return "sorry, nothing here"
+
+    bad = object.__new__(LLMExtractor)
+    bad._call_llm = _never_json
+    bad.provider = "test"
+    bad.model = "test-model"
+    for attr in ("extraction_count", "escalation_count", "api_call_count",
+                 "key_rotation_count"):
+        setattr(bad, attr, 0)
+    bad.total_response_time_ms = 0.0
+    bad.last_empty_reason = None
+    bad.empty_reasons = {}
+
+    # Expected to fail: silence the ERROR logging it emits by design.
+    with _quiet("src.llm_extractor"):
+        bad.extract("A turn that breaks the parser", 7, speaker="Melanie")
+        before = bad_calls["n"]
+        bad.extract("A turn that breaks the parser", 7, speaker="Melanie")
+    check("a parse failure is not cached", bad_calls["n"] > before,
+          "caching it would replay the failure on every future run of this conversation")
+    check("the failure is attributed, not counted as an empty turn",
+          bad.empty_reasons.get("parse_error", 0) >= 1,
+          f"got {bad.empty_reasons}")
+
+    _reload("conversation", EXTRACTION_CACHE_ENABLED=None, EXTRACTION_CACHE_DIR=None)
+
+
+def test_reranker() -> None:
+    """Cross-encoder reranking: blending, ordering, and safe degradation."""
+    print("\ncross-encoder reranking")
+    _reload("conversation")
+    import src.reranker as rr
+    rr.reset()
+
+    mem = {"speaker": "Melanie", "key": "charity race",
+           "value": "ran a charity race", "event_date": "18 May, 2023",
+           "source_text": "[18 May, 2023] Melanie: the race raised awareness for mental health"}
+    text = rr.memory_pair_text(mem)
+    check("pair text carries the speaker", "Melanie" in text)
+    check("pair text carries the date", "18 May, 2023" in text)
+    # The compressed value drops what the question often asks about; the utterance keeps it.
+    check("pair text carries the original utterance",
+          "mental health" in text,
+          "extraction compresses this away, so the reranker must see the source")
+    check("pair text is truncated", len(rr.memory_pair_text(mem, max_chars=20)) <= 20)
+
+    check("all-equal scores normalise to neutral", rr._minmax([3.0, 3.0]) == [0.5, 0.5],
+          "otherwise a flat score set would impose an arbitrary order")
+    check("normalisation spans zero to one", rr._minmax([1.0, 3.0, 2.0]) == [0.0, 1.0, 0.5])
+
+    docs = [
+        {"memory_id": "a", "key": "k", "value": "wrong but plausible", "retrieval_score": 0.9},
+        {"memory_id": "b", "key": "k", "value": "the actual answer", "retrieval_score": 0.5},
+    ]
+
+    # Simulate a model that already failed to load, rather than naming a bogus repo.
+    # Passing a fake name here would send a real request to HuggingFace -- which this
+    # suite promises never to do, and which on an offline or firewalled machine hangs on
+    # a timeout instead of returning instantly. Setting the latch exercises the identical
+    # branch (_get_model returns None) with no network at all.
+    rr._load_failed = True
+    rr._model = None
+    check("a reranker that failed to load returns the input order untouched",
+          [m["memory_id"] for m in rr.rerank("q", docs, "irrelevant")] == ["a", "b"],
+          "a missing reranker must degrade, not raise")
+    check("is_available reports the failure rather than leaving it to be inferred",
+          rr.is_available("irrelevant") is False,
+          "a silent no-op looks exactly like a reranker that did not help")
+
+    rr.reset()
+
+    class _FakeCE:
+        """Scores the second document higher -- the case ranking got wrong."""
+        def predict(self, pairs):
+            return [0.0 if "plausible" in doc else 5.0 for _q, doc in pairs]
+
+    rr._model = _FakeCE()
+    rr._load_failed = False
+
+    out = rr.rerank("what did the race raise awareness for", docs, "fake", weight=1.0)
+    check("reranking promotes the memory the first stage under-ranked",
+          [m["memory_id"] for m in out] == ["b", "a"],
+          "this is the recurring failure the weighted sum cannot express")
+    check("the pre-rerank score is kept for diagnosis",
+          out[0].get("pre_rerank_score") == 0.5)
+
+    docs2 = [dict(d) for d in docs]
+    check("weight 0 disables reranking without loading anything",
+          [m["memory_id"] for m in rr.rerank("q", docs2, "fake", weight=0.0)] == ["a", "b"])
+
+    docs3 = [dict(d) for d in docs]
+    out3 = rr.rerank("q", docs3, "fake", candidates=1, weight=1.0)
+    check("candidates beyond the rerank window sort below those inside it",
+          out3[0]["memory_id"] == "a" and out3[1]["retrieval_score"] == -1.0,
+          "an unrescored raw score must not outrank a normalised blended one")
+
+    rr.reset()
+
+
+def test_topk_is_sweepable() -> None:
+    """Top-K must be settable from the environment, since it is the ablation that matters."""
+    print("\ntop-K configurability")
+    r = _reload("conversation", MAX_MEMORIES_TO_RETRIEVE="10")
+    from src.config import (MAX_MEMORIES_TO_RETRIEVE, MEMORY_TOKEN_BUDGET,
+                            TOKENS_PER_MEMORY_ESTIMATE)
+    check("top-K honours the environment", MAX_MEMORIES_TO_RETRIEVE == 10,
+          f"got {MAX_MEMORIES_TO_RETRIEVE}; the sweep depends on this")
+
+    _reload("conversation", MAX_MEMORIES_TO_RETRIEVE=None)
+    from src.config import MAX_MEMORIES_TO_RETRIEVE as default_k
+    check("the shipped default is unchanged at 50", default_k == 50,
+          f"got {default_k}; the baseline must stay exactly the shipped behaviour")
+    # Documents the vestigial trim rather than asserting it is correct: at the defaults the
+    # budget cannot bind, so top-K alone bounds the context.
+    from src.config import (MEMORY_TOKEN_BUDGET as budget,
+                            TOKENS_PER_MEMORY_ESTIMATE as per_mem)
+    check("the token budget cannot bind at the shipped defaults",
+          budget // per_mem > default_k,
+          f"budget allows {budget // per_mem} memories vs top-K {default_k}")
+
+
+def test_subject_vs_speaker() -> None:
+    """A memory is not always about the person who uttered it."""
+    print("\nsubject vs speaker")
+    r = _reload("conversation", SUBJECT_AWARE_CONTEXT="true")
+    from src.retriever import participant_names, subject_of
+
+    mems = [{"speaker": "Melanie", "value": "x"}, {"speaker": "Caroline Carter", "value": "y"}]
+    known = participant_names(mems)
+    check("participants come from the speakers present",
+          {"melanie", "caroline carter", "caroline"} <= known,
+          f"got {known}; the full name and the first name must both match")
+
+    said_by_melanie_about_caroline = {
+        "speaker": "Melanie",
+        "value": "Caroline plans to give a home to needy children through adoption"}
+    check("a value leading with another participant relabels the subject",
+          subject_of(said_by_melanie_about_caroline, known) == "Caroline",
+          "this is the 15% of memories the context currently misattributes")
+    check("possessives count too",
+          subject_of({"speaker": "Caroline", "value": "Melanie's wedding day was lovely"},
+                     known) == "Melanie")
+
+    # The regression that validation against a real store caught: a bare capitalisation
+    # test invented subjects called "Having" and "Felt".
+    for verb_value in ("Having people who understand has made a difference",
+                       "Felt totally accepted at the conference"):
+        check(f"a capitalised verb is not a subject ({verb_value.split()[0]})",
+              subject_of({"speaker": "Caroline", "value": verb_value}, known) == "Caroline",
+              "gating on known participants is what prevents this")
+
+    check("a name later in the value is an object, not the subject",
+          subject_of({"speaker": "Caroline",
+                      "value": "Caroline offered to help Melanie with the adoption"},
+                     known) == "Caroline")
+    check("a value naming nobody stays with its speaker",
+          subject_of({"speaker": "Melanie", "value": "prefers espresso"}, known) == "Melanie",
+          "otherwise the only attribution available would be lost")
+    check("without a participant list nothing is relabelled",
+          subject_of(said_by_melanie_about_caroline, None) == "Melanie",
+          "the safe default is exactly today's behaviour")
+
+    # Rendering: the false assertion must be gone, and provenance kept.
+    #
+    # Both speakers are present, as they are in any real retrieved context from a two-party
+    # conversation. That matters: participants are derived from the speakers in the set, so
+    # a context containing only Melanie's memories has no evidence that "Caroline" names a
+    # person at all, and correctly declines to relabel.
+    CROSS = [
+        {"memory_id": "m1", "type": "fact", "key": "adoption intent",
+         "value": "Caroline plans to give a home to needy children",
+         "speaker": "Melanie", "event_date": "22 October, 2023",
+         "event_ts": 1.0, "turn_number": 5, "confidence": 0.9, "retrieval_score": 0.9,
+         "source_text": ""},
+        {"memory_id": "m2", "type": "preference", "key": "coffee",
+         "value": "prefers espresso", "speaker": "Caroline", "event_date": "",
+         "event_ts": 0.0, "turn_number": 6, "confidence": 0.8, "retrieval_score": 0.4,
+         "source_text": ""},
+    ]
+    retr = r.MemoryRetriever.__new__(r.MemoryRetriever)
+    out = retr._format_chronological(CROSS)
+    check("the cross-attributed line no longer opens with the wrong person",
+          "Melanie - adoption intent" not in out,
+          f"got: {out.strip()[:120]}")
+    check("provenance is kept as attribution, not ownership",
+          "[said by Melanie]" in out, f"got: {out.strip()[:120]}")
+    check("the subject still reaches the reader via the value",
+          "Caroline plans" in out)
+    solo = retr._format_chronological([CROSS[0]])
+    check("a lone speaker's context does not relabel on an unverified name",
+          "Melanie - adoption intent" in solo,
+          "with no evidence Caroline is a participant, falling back is the safe choice")
+
+    # Baseline must be untouched with the flag off, or the 43.5% reading stops comparing.
+    r2 = _reload("conversation", SUBJECT_AWARE_CONTEXT=None)
+    retr2 = r2.MemoryRetriever.__new__(r2.MemoryRetriever)
+    out2 = retr2._format_chronological(CROSS)
+    check("with the flag off the rendering is unchanged",
+          "Melanie - adoption intent" in out2 and "said by" not in out2,
+          f"got: {out2.strip()[:120]}")
+
+
+def test_sweep_grids() -> None:
+    """The offline sweep's grids must be well-formed and single-variable."""
+    print("\noffline retrieval sweep")
+    _reload("conversation")
+    from benchmarks.sweep import GRIDS, label, _median
+
+    check("median of an odd list", _median([3, 1, 2]) == 2.0)
+    check("median of an even list", _median([1, 2, 3, 4]) == 2.5)
+    check("median of nothing is None", _median([]) is None)
+
+    check("the default grid starts from the shipped baseline",
+          GRIDS["default"]()[0] == {},
+          "without an unmodified arm there is nothing to compare deltas against")
+
+    for name, build in GRIDS.items():
+        configs = build()
+        check(f"grid '{name}' is non-empty", len(configs) > 0)
+        flat_ok = all(
+            isinstance(c, dict) and all(isinstance(k, str) and isinstance(v, str)
+                                        for k, v in c.items())
+            for c in configs
+        )
+        check(f"grid '{name}' contains only string env pairs", flat_ok,
+              "these are passed straight into a subprocess environment")
+        labels = [label(c) for c in configs]
+        check(f"grid '{name}' has distinct labels", len(set(labels)) == len(labels),
+              f"duplicate labels would collide in the report: {labels}")
+
+    # Every key a grid sets must be one config.py actually reads, or the arm silently
+    # measures the baseline again and looks like "no effect".
+    from src import config as c
+    known = {
+        "MAX_MEMORIES_TO_RETRIEVE", "MEMORY_TOKEN_BUDGET", "TOKENS_PER_MEMORY_ESTIMATE",
+        "RERANK_ENABLED", "RERANK_WEIGHT", "RERANK_CANDIDATES", "BM25_K1", "BM25_B",
+        "RANK_W_SEMANTIC", "RANK_W_TYPE", "RANK_W_RECENCY", "RANK_W_FREQUENCY",
+        "RANK_W_CONFIDENCE", "RECENCY_RETRIEVAL_LIMIT", "ALWAYS_ON_SEMANTIC_FLOOR",
+        "CONTEXT_EVIDENCE_TOP_N", "CONTEXT_EVIDENCE_MAX_CHARS",
+        "SUBJECT_AWARE_RANKING", "SUBJECT_AWARE_CONTEXT",
+    }
+    used = {k for build in GRIDS.values() for cfg in build() for k in cfg}
+    check("every swept key is a real config knob", used <= known,
+          f"unknown: {sorted(used - known)}")
+    # And the plain (non RANK_W_) names must exist on the config module.
+    missing = [k for k in used
+               if not k.startswith("RANK_W_") and not hasattr(c, k)]
+    check("every swept key exists on src.config", not missing, f"missing: {missing}")
+
+    check("the sweep threshold matches diagnose's",
+          __import__("benchmarks.sweep", fromlist=["x"]).GOLD_PRESENT_THRESHOLD == 0.5,
+          "the two must agree on what 'the answer was there' means")
 
 
 def test_temporal_enrichment() -> None:
@@ -630,6 +1011,8 @@ def main() -> int:
                test_query_intent, test_query_dates, test_always_on_floor,
                test_ranking_profiles, test_embedding_text, test_speaker_prompt,
                test_entity_index, test_extraction_quality_prompt,
+               test_extraction_cache, test_reranker, test_topk_is_sweepable,
+               test_subject_vs_speaker, test_sweep_grids,
                test_temporal_enrichment, test_context_noise, test_reader_prompt,
                test_results_roundtrip, test_dataset_dates, test_stratified_sampling):
         try:
